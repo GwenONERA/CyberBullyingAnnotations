@@ -1,6 +1,6 @@
 On parvient dans ce notebook à reproduire les outputs du site EMOTYC avec une précision d'environ 95,8 %
 
-Le meilleur template est : bca_v3 (before:</s>current:{s}</s>after:</s> - sans espaces après les deux-points).
+Le meilleur template est : bca_v3 : `before:</s>current:{s}</s>after:</s>` - sans espaces après les deux-points.
 
 ```python
 import torch, numpy as np, pandas as pd
