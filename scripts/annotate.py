@@ -89,8 +89,8 @@ def parse_args():
     p.add_argument("--model_provider", default="bedrock",
                     choices=["bedrock", "gemini", "huggingface"],
                     help="Provider LLM (défaut: bedrock)")
-    p.add_argument("--model", default="claude-sonnet-4-6",
-                    help="Modèle à utiliser (défaut: claude-sonnet-4-6)")
+    p.add_argument("--model", default="claude-opus-4-6",
+                    help="Modèle à utiliser (défaut: claude-opus-4-6)")
 
     # ── Annotations d'experts ──
     p.add_argument("--use_annotations", action="store_true",
@@ -187,7 +187,8 @@ def main():
 
         validation_warnings = []
         if json_ok and parsed_obj:
-            validation_warnings = validate_annotation(parsed_obj)
+            target_text = target_repr.get("TEXT", "") if target_repr else ""
+            validation_warnings = validate_annotation(parsed_obj, target_text=target_text)
         if not is_complete:
             validation_warnings.append(
                 f"stop_reason={stop_reason} (troncature probable)"

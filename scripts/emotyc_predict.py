@@ -95,6 +95,33 @@ EMOTION_INDICES = {
 # Swap admiration ↔ autre (identifié dans retroIngenierie notebook)
 SWAP_PAIRS = [(EMOTYC_LABEL2ID["Admiration"], EMOTYC_LABEL2ID["Autre"])]
 
+# ── Constantes pour les modes d'expression ────────────────────────────────
+MODE_ORDER = ["Comportementale", "Designee", "Montree", "Suggeree"]
+
+MODE_INDICES = {
+    "Comportementale": 1,
+    "Designee": 2,
+    "Montree": 3,
+    "Suggeree": 4,
+}
+
+# Indice 0 = Emo (caractère émotionnel)
+EMO_INDEX = 0
+
+# Indices 5-6 = Type (Base, Complexe)
+TYPE_INDICES = {"Base": 5, "Complexe": 6}
+
+# Mapping gold → EMOTYC pour les modes (noms avec accents → sans accents)
+GOLD_MODE_MAP = {
+    "Comportementale": "Comportementale",
+    "Designee":        "Designee",
+    "Désignée":        "Designee",
+    "Montree":         "Montree",
+    "Montrée":         "Montree",
+    "Suggeree":        "Suggeree",
+    "Suggérée":        "Suggeree",
+}
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  UTILS
@@ -164,6 +191,7 @@ def predict_batch(tokenizer, model, device, texts, batch_size=16):
             truncation=True,
             padding=True,
             max_length=512,
+            add_special_tokens=False,   # aligné avec le fine-tuning d'EMOTYC
         ).to(device)
         logits = model(**encodings).logits  # (B, 19)
 
@@ -201,18 +229,47 @@ def load_gold_labels(xlsx_path):
         print("  ✗ Colonne texte non trouvée (TEXT/text/sentence)")
         sys.exit(1)
 
+    # Détecter les colonnes de mode (optionnelles)
+    mode_cols_found = []
+    for mode_name in MODE_ORDER:
+        # Chercher avec ou sans accents
+        candidates = [mode_name]
+        for gold_name, emotyc_name in GOLD_MODE_MAP.items():
+            if emotyc_name == mode_name and gold_name != mode_name:
+                candidates.append(gold_name)
+        for c in candidates:
+            if c in df.columns:
+                mode_cols_found.append((mode_name, c))
+                break
+
+    # Détecter Emo (optionnel)
+    has_emo = "Emo" in df.columns
+
+    # Détecter Base/Complexe (optionnels)
+    type_cols_found = []
+    for t in ("Base", "Complexe"):
+        if t in df.columns:
+            type_cols_found.append(t)
+
     print(f"  Colonne texte : '{text_col}'")
     print(f"  Colonnes émotions : {EMOTION_ORDER}")
+    if mode_cols_found:
+        print(f"  Colonnes modes : {[m[1] for m in mode_cols_found]}")
+    if has_emo:
+        print(f"  Colonne Emo : présente")
+    if type_cols_found:
+        print(f"  Colonnes type : {type_cols_found}")
 
-    return df, text_col
+    return df, text_col, mode_cols_found, has_emo, type_cols_found
 
 
-def extract_gold_matrix(df):
-    """Extrait la matrice binaire (N, 11) du gold label."""
-    gold = np.zeros((len(df), len(EMOTION_ORDER)), dtype=int)
-    for j, emo in enumerate(EMOTION_ORDER):
-        vals = pd.to_numeric(df[emo], errors="coerce").fillna(0)
-        gold[:, j] = (vals >= 0.5).astype(int)
+def extract_gold_matrix(df, label_names):
+    """Extrait la matrice binaire (N, K) du gold label pour un ensemble de colonnes."""
+    gold = np.zeros((len(df), len(label_names)), dtype=int)
+    for j, col_name in enumerate(label_names):
+        if col_name in df.columns:
+            vals = pd.to_numeric(df[col_name], errors="coerce").fillna(0)
+            gold[:, j] = (vals >= 0.5).astype(int)
     return gold
 
 
@@ -220,15 +277,23 @@ def extract_gold_matrix(df):
 #  MÉTRIQUES
 # ═══════════════════════════════════════════════════════════════════════════
 
-def compute_metrics(gold, pred):
-    """Calcule les métriques par émotion et globales."""
+def compute_metrics(gold, pred, label_names):
+    """
+    Calcule les métriques par label et globales.
+    Factorisé pour supporter émotions, modes, ou tout ensemble de labels.
+
+    Arguments :
+        gold        — matrice (N, K) binaire gold
+        pred        — matrice (N, K) binaire prédictions
+        label_names — liste de K noms de labels
+    """
     from sklearn.metrics import (
         accuracy_score, f1_score, precision_score, recall_score,
         cohen_kappa_score,
     )
 
     results = []
-    for j, emo in enumerate(EMOTION_ORDER):
+    for j, label in enumerate(label_names):
         g, p = gold[:, j], pred[:, j]
         tp = int(((g == 1) & (p == 1)).sum())
         fp = int(((g == 0) & (p == 1)).sum())
@@ -245,7 +310,7 @@ def compute_metrics(gold, pred):
         rec = recall_score(g, p, zero_division=0)
 
         results.append({
-            "emotion": emo,
+            "label": label,
             "tp": tp, "fp": fp, "fn": fn, "tn": tn,
             "accuracy": round(acc, 4),
             "kappa": round(kappa, 4) if not math.isnan(kappa) else None,
@@ -266,8 +331,29 @@ def compute_metrics(gold, pred):
         "micro_f1": round(float(micro_f1), 4),
         "exact_match": round(float(exact_match), 4),
         "n_samples": len(gold),
-        "n_emotions": len(EMOTION_ORDER),
+        "n_labels": len(label_names),
     }
+
+
+def _print_metrics_table(title, per_label, global_metrics, threshold_mode=None):
+    """Affiche un tableau de métriques formaté."""
+    t_info = f"  (seuils: {threshold_mode})" if threshold_mode else ""
+    print(f"\n{'═' * 75}")
+    print(f"  {title}{t_info}")
+    print(f"{'═' * 75}")
+    print(f"  {'Label':<20s} {'Acc':>7s} {'Kappa':>7s} {'F1':>7s} "
+          f"{'Prec':>7s} {'Recall':>7s} {'FP':>5s} {'FN':>5s}")
+    print(f"  {'-' * 68}")
+    for r in per_label:
+        k_str = f"{r['kappa']:.3f}" if r['kappa'] is not None else "  N/A"
+        print(f"  {r['label']:<20s} {r['accuracy']:>7.3f} {k_str:>7s} "
+              f"{r['f1']:>7.3f} {r['precision']:>7.3f} {r['recall']:>7.3f} "
+              f"{r['fp']:>5d} {r['fn']:>5d}")
+    print(f"  {'-' * 68}")
+    print(f"  Macro-F1    : {global_metrics['macro_f1']:.4f}")
+    print(f"  Micro-F1    : {global_metrics['micro_f1']:.4f}")
+    print(f"  Exact Match : {global_metrics['exact_match']:.4f}")
+    print(f"{'═' * 75}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -302,10 +388,24 @@ def main():
 
     # ── 1. Chargement du gold ─────────────────────────────────────────
     xlsx_path = os.path.abspath(args.xlsx)
-    df, text_col = load_gold_labels(xlsx_path)
-    gold_matrix = extract_gold_matrix(df)
+    df, text_col, mode_cols_found, has_emo, type_cols_found = load_gold_labels(xlsx_path)
+    gold_matrix = extract_gold_matrix(df, EMOTION_ORDER)
     sentences = df[text_col].astype(str).tolist()
     N = len(sentences)
+
+    # ── 1b. Gold pour modes, emo, type (si disponibles) ───────────────
+    gold_mode_matrix = None
+    if mode_cols_found:
+        mode_gold_cols = [col_in_df for _, col_in_df in mode_cols_found]
+        gold_mode_matrix = extract_gold_matrix(df, mode_gold_cols)
+
+    gold_emo_matrix = None
+    if has_emo:
+        gold_emo_matrix = extract_gold_matrix(df, ["Emo"])
+
+    gold_type_matrix = None
+    if type_cols_found:
+        gold_type_matrix = extract_gold_matrix(df, type_cols_found)
 
     # ── 2. Chargement du modèle ───────────────────────────────────────
     device = torch.device(args.device) if args.device else None
@@ -346,6 +446,18 @@ def main():
         idx = EMOTION_INDICES[emo]
         emotion_probs[:, j] = all_probs_19[:, idx]
 
+    # ── 5b. Extraction des modes, emo, type ───────────────────────────
+    mode_probs = np.zeros((N, len(MODE_ORDER)), dtype=np.float64)
+    for j, mode in enumerate(MODE_ORDER):
+        mode_probs[:, j] = all_probs_19[:, MODE_INDICES[mode]]
+
+    emo_probs = all_probs_19[:, EMO_INDEX]  # (N,)
+
+    type_probs = np.zeros((N, len(TYPE_INDICES)), dtype=np.float64)
+    type_names = list(TYPE_INDICES.keys())
+    for j, t in enumerate(type_names):
+        type_probs[:, j] = all_probs_19[:, TYPE_INDICES[t]]
+
     # ── 6. Seuils et prédictions binaires ─────────────────────────────
     if args.no_optimized_thresholds:
         thresholds = {emo: 0.5 for emo in EMOTION_ORDER}
@@ -361,25 +473,40 @@ def main():
     threshold_array = np.array([thresholds[emo] for emo in EMOTION_ORDER])
     pred_matrix = (emotion_probs >= threshold_array).astype(int)
 
-    # ── 7. Métriques ──────────────────────────────────────────────────
-    per_emotion, global_metrics = compute_metrics(gold_matrix, pred_matrix)
+    # Prédictions binaires modes/emo/type (seuil 0.5)
+    pred_mode_matrix = (mode_probs >= 0.5).astype(int)
+    pred_emo_array = (emo_probs >= 0.5).astype(int)
+    pred_type_matrix = (type_probs >= 0.5).astype(int)
 
-    print(f"\n{'═' * 75}")
-    print(f"  MÉTRIQUES PAR ÉMOTION  (seuils: {threshold_mode})")
-    print(f"{'═' * 75}")
-    print(f"  {'Émotion':<15s} {'Acc':>7s} {'Kappa':>7s} {'F1':>7s} "
-          f"{'Prec':>7s} {'Recall':>7s} {'FP':>5s} {'FN':>5s}")
-    print(f"  {'-' * 68}")
-    for r in per_emotion:
-        k_str = f"{r['kappa']:.3f}" if r['kappa'] is not None else "  N/A"
-        print(f"  {r['emotion']:<15s} {r['accuracy']:>7.3f} {k_str:>7s} "
-              f"{r['f1']:>7.3f} {r['precision']:>7.3f} {r['recall']:>7.3f} "
-              f"{r['fp']:>5d} {r['fn']:>5d}")
-    print(f"  {'-' * 68}")
-    print(f"  Macro-F1    : {global_metrics['macro_f1']:.4f}")
-    print(f"  Micro-F1    : {global_metrics['micro_f1']:.4f}")
-    print(f"  Exact Match : {global_metrics['exact_match']:.4f}")
-    print(f"{'═' * 75}")
+    # ── 7. Métriques émotions ─────────────────────────────────────────
+    per_emotion, global_metrics = compute_metrics(gold_matrix, pred_matrix, EMOTION_ORDER)
+    _print_metrics_table("MÉTRIQUES PAR ÉMOTION", per_emotion, global_metrics, threshold_mode)
+
+    # ── 7b. Métriques modes (si gold disponible) ──────────────────────
+    per_mode = None
+    global_mode_metrics = None
+    if gold_mode_matrix is not None:
+        per_mode, global_mode_metrics = compute_metrics(
+            gold_mode_matrix, pred_mode_matrix, MODE_ORDER
+        )
+        _print_metrics_table("MÉTRIQUES PAR MODE D'EXPRESSION", per_mode, global_mode_metrics)
+
+    # ── 7c. Métriques Emo (si gold disponible) ────────────────────────
+    per_emo_label = None
+    if gold_emo_matrix is not None:
+        per_emo_label, _ = compute_metrics(
+            gold_emo_matrix, pred_emo_array.reshape(-1, 1), ["Emo"]
+        )
+        _print_metrics_table("MÉTRIQUES — CARACTÈRE ÉMOTIONNEL (Emo)", per_emo_label, _)
+
+    # ── 7d. Métriques Type (si gold disponible) ───────────────────────
+    per_type = None
+    global_type_metrics = None
+    if gold_type_matrix is not None:
+        per_type, global_type_metrics = compute_metrics(
+            gold_type_matrix, pred_type_matrix, type_cols_found
+        )
+        _print_metrics_table("MÉTRIQUES — TYPE (Base/Complexe)", per_type, global_type_metrics)
 
     # ── 8. Export JSONL ───────────────────────────────────────────────
     os.makedirs(args.out_dir, exist_ok=True)
@@ -388,7 +515,7 @@ def main():
     n_divergent = 0
     with open(out_path, "w", encoding="utf-8") as f:
         for i in range(N):
-            # Identifier les divergences
+            # Identifier les divergences (émotions)
             divergences = []
             for j, emo in enumerate(EMOTION_ORDER):
                 g = int(gold_matrix[i, j])
@@ -419,6 +546,7 @@ def main():
                 "text_next": next_text,
                 "template_used": template_name,
                 "threshold_mode": threshold_mode,
+                # Émotions
                 "probas": {
                     emo: round(float(emotion_probs[i, j]), 6)
                     for j, emo in enumerate(EMOTION_ORDER)
@@ -431,6 +559,28 @@ def main():
                     emo: int(gold_matrix[i, j])
                     for j, emo in enumerate(EMOTION_ORDER)
                 },
+                # Modes
+                "probas_mode": {
+                    mode: round(float(mode_probs[i, j]), 6)
+                    for j, mode in enumerate(MODE_ORDER)
+                },
+                "preds_mode": {
+                    mode: int(pred_mode_matrix[i, j])
+                    for j, mode in enumerate(MODE_ORDER)
+                },
+                # Caractère émotionnel
+                "proba_emo": round(float(emo_probs[i]), 6),
+                "pred_emo": int(pred_emo_array[i]),
+                # Type (Base/Complexe)
+                "probas_type": {
+                    t: round(float(type_probs[i, j]), 6)
+                    for j, t in enumerate(type_names)
+                },
+                "preds_type": {
+                    t: int(pred_type_matrix[i, j])
+                    for j, t in enumerate(type_names)
+                },
+                # Divergences
                 "n_divergences": len(divergences),
                 "divergences": divergences,
             }
@@ -450,6 +600,15 @@ def main():
         "per_emotion": per_emotion,
         "global_metrics": global_metrics,
     }
+    if per_mode:
+        summary["per_mode"] = per_mode
+        summary["global_mode_metrics"] = global_mode_metrics
+    if per_emo_label:
+        summary["per_emo"] = per_emo_label
+    if per_type:
+        summary["per_type"] = per_type
+        summary["global_type_metrics"] = global_type_metrics
+
     summary_path = os.path.join(args.out_dir, "emotyc_predictions_summary.json")
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)

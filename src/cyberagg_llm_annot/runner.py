@@ -9,12 +9,17 @@ from typing import Any, Dict, List, Optional, Tuple
 from .io_utils import (
     ensure_dir, append_jsonl, safe_write_json, load_json, utc_now_iso,
 )
+from .prompt_utils import EMOTIONS, MODES
 
 # ── Regex pour extraire le JSON d'un éventuel bloc ```json … ``` ───────────
 _CODEBLOCK_RE = re.compile(r"```(?:json)?\s*\n(.*?)\n\s*```", re.DOTALL)
 
-# ── Émotions attendues dans la sortie ──────────────────────────────────────
-_EXPECTED_EMOTIONS = frozenset({
+# ── Émotions et modes attendus (utilisés pour la validation) ───────────────
+_EXPECTED_EMOTIONS = frozenset(EMOTIONS)
+_EXPECTED_MODES = frozenset(MODES)
+
+# ── Ancien format (11 émotions binaires, rétro-compatibilité) ─────────────
+_OLD_EMOTIONS = frozenset({
     "Colère", "Dégoût", "Joie", "Peur", "Surprise", "Tristesse",
     "Admiration", "Culpabilité", "Embarras", "Fierté", "Jalousie",
 })
@@ -66,34 +71,39 @@ def try_parse_json(text: str) -> Tuple[bool, Optional[Dict[str, Any]], Optional[
         return False, None, str(exc)
 
 
+# ── Détection de format ───────────────────────────────────────────────────
+
+def _is_old_format(obj: Dict[str, Any]) -> bool:
+    """Détecte si l'objet JSON est au format ancien (émotions binaires)."""
+    return "emotions" in obj and "sitemo_units" not in obj
+
+
 # ── Validation structurelle ────────────────────────────────────────────────
 
-def validate_annotation(obj: Dict[str, Any]) -> List[str]:
+def validate_annotation(
+    obj: Dict[str, Any],
+    target_text: Optional[str] = None,
+) -> List[str]:
     """
     Vérifie que le JSON parsé respecte le schéma attendu.
+    Supporte le nouveau format SitEmo et l'ancien format émotions binaires.
     Retourne une liste de warnings (vide = tout est OK).
+
+    Arguments :
+        obj         — le JSON parsé de la réponse LLM
+        target_text — le texte TARGET original, pour vérification du span
     """
     warnings: List[str] = []
 
     if not isinstance(obj, dict):
         return ["root is not a dict"]
 
-    # metadata
-    meta = obj.get("metadata")
-    if meta is None:
-        warnings.append("missing 'metadata'")
-    else:
-        if meta.get("confidence") not in ("high", "medium", "low"):
-            warnings.append(f"unexpected confidence: {meta.get('confidence')}")
-
-    # emotions
-    emotions = obj.get("emotions")
-    if emotions is None:
-        warnings.append("missing 'emotions'")
-    else:
+    # ── Rétro-compatibilité : ancien format émotions binaires ──
+    if _is_old_format(obj):
+        emotions = obj.get("emotions", {})
         present = set(emotions.keys())
-        missing = _EXPECTED_EMOTIONS - present
-        extra   = present - _EXPECTED_EMOTIONS
+        missing = _OLD_EMOTIONS - present
+        extra = present - _OLD_EMOTIONS - {"Autre"}
         if missing:
             warnings.append(f"missing emotions: {sorted(missing)}")
         if extra:
@@ -101,6 +111,53 @@ def validate_annotation(obj: Dict[str, Any]) -> List[str]:
         for k, v in emotions.items():
             if v not in (0, 1):
                 warnings.append(f"'{k}' has non-binary value: {v}")
+        return warnings
+
+    # ── Nouveau format SitEmo ──
+    units = obj.get("sitemo_units")
+    if units is None:
+        warnings.append("missing 'sitemo_units'")
+        return warnings
+
+    if not isinstance(units, list):
+        warnings.append(f"'sitemo_units' is not a list: {type(units).__name__}")
+        return warnings
+
+    for i, unit in enumerate(units):
+        prefix = f"sitemo_units[{i}]"
+
+        if not isinstance(unit, dict):
+            warnings.append(f"{prefix}: not a dict")
+            continue
+
+        # span_text
+        span = unit.get("span_text")
+        if not span or not isinstance(span, str) or not span.strip():
+            warnings.append(f"{prefix}: 'span_text' manquant ou vide")
+        elif target_text:
+            # Vérification que le span se retrouve dans le texte TARGET
+            if span not in target_text and span.lower() not in target_text.lower():
+                warnings.append(
+                    f"{prefix}: span_text '{span[:50]}' non trouvé dans le TARGET"
+                )
+
+        # mode
+        mode = unit.get("mode")
+        if mode not in _EXPECTED_MODES:
+            warnings.append(f"{prefix}: mode invalide '{mode}' "
+                            f"(attendu: {sorted(_EXPECTED_MODES)})")
+
+        # categorie
+        cat = unit.get("categorie")
+        if cat not in _EXPECTED_EMOTIONS:
+            warnings.append(f"{prefix}: categorie invalide '{cat}' "
+                            f"(attendu: {sorted(_EXPECTED_EMOTIONS)})")
+
+        # categorie2 (optionnel : null ou ∈ EMOTIONS)
+        cat2 = unit.get("categorie2")
+        if cat2 is not None and cat2 not in _EXPECTED_EMOTIONS:
+            warnings.append(f"{prefix}: categorie2 invalide '{cat2}' "
+                            f"(attendu: null ou {sorted(_EXPECTED_EMOTIONS)})")
 
     return warnings
 

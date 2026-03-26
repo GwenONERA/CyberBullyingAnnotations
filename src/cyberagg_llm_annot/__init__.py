@@ -7,7 +7,7 @@ from .io_utils import (
 from .parsing import parse_cell_with_possible_null, extract_row_labels
 from .context import get_message_window, minimal_msg_repr
 from .prompt_utils import (
-    SYSTEM_PROMPT, EMOTIONS, DEFAULT_LABEL_COLS,
+    SYSTEM_PROMPT, EMOTIONS, MODES, DEFAULT_LABEL_COLS,
     build_annotations_block, build_user_message,
 )
 from .runner import (

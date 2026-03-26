@@ -7,59 +7,94 @@ DEFAULT_LABEL_COLS = [
     "INTENTION", "CONTEXT", "SENTIMENT",
 ]
 
-# ── 11 émotions cibles ─────────────────────────────────────────────────────
+# ── 12 catégories émotionnelles ────────────────────────────────────────────
 EMOTIONS = [
     "Colère", "Dégoût", "Joie", "Peur", "Surprise", "Tristesse",
-    "Admiration", "Culpabilité", "Embarras", "Fierté", "Jalousie",
+    "Admiration", "Culpabilité", "Embarras", "Fierté", "Jalousie", "Autre",
 ]
+
+# ── 4 modes d'expression ──────────────────────────────────────────────────
+MODES = ["Désignée", "Comportementale", "Suggérée", "Montrée"]
 
 # ── System prompt (injecté via le paramètre "system" de Bedrock) ───────────
 SYSTEM_PROMPT = """\
-Tu es un annotateur expert en émotions. Ta tâche : produire des étiquettes émotionnelles (multi-label, 0/1) pour UN SEUL message cible (TARGET) écrit par des adolescents (11–18 ans) dans des conversations de cyber-harcèlement en français.
+Tu es un annotateur expert en linguistique des émotions. Ta tâche : identifier et annoter les unités émotionnelles (SitEmo) dans UN SEUL message cible (TARGET).
 
-RÈGLES STRICTES
-1. Annote UNIQUEMENT le message TARGET. PREV/NEXT = contexte conversationnel.
-2. Étiquette les émotions EXPRIMÉES par l'auteur du TARGET \
-   (pas celles de la victime, ni l'effet sur le lecteur).
-3. Multi-label autorisé — active au maximum 3 émotions. \
-   En cas de forte hésitation, préfère 0 et signale l'ambiguïté.
-4. "mdr", "ptdr", emojis rieurs → joie OU moquerie/attaque. \
-   Active "Joie" uniquement si un affect positif est réellement exprimé.
-5. Si des annotations d'experts sont fournies (EXPERT_ANNOTATIONS), \
-   utilise-les comme indice contextuel mais NE LES COPIE PAS aveuglément.
-6. Renvoie UNIQUEMENT un objet JSON brut. \
+═══ CADRE THÉORIQUE ═══
 
-TAXONOMIE — 11 émotions (valeurs 0 ou 1)
-• Colère       — irritation, agressivité, menaces, injonctions hostiles, insultes
-• Dégoût       — répulsion, mépris corporel/moral
-• Joie         — amusement, plaisir (y compris rire moqueur si affect positif)
-• Peur         — inquiétude, menace subie, anxiété
-• Surprise     — étonnement réel ("hein?", "wtf?")
-• Tristesse    — peine, découragement, désespoir
-• Admiration   — estime, soutien valorisant (rare en contexte de harcèlement)
-• Culpabilité  — remords, auto-reproche
-• Embarras     — honte, gêne, humiliation ressentie
-• Fierté       — vantardise, domination, satisfaction de soi
-• Jalousie     — envie hostile/possessive, rancœur comparative
+Une unité SitEmo est un triplet (Span ; Catégorie ; Mode) :
+• Span — le segment textuel précis qui exprime l'émotion. Tu dois CITER les mots exacts.
+• Catégorie — l'émotion exprimée parmi les 12 catégories ci-dessous.
+• Mode — la MANIÈRE dont l'émotion est exprimée, parmi les 4 modes ci-dessous.
 
-PROCÉDURE INTERNE (applique sans détailler dans la sortie)
-- Décode l'argot / abréviations adolescentes.
-- Identifie si le TARGET est une attaque, défense, soutien ou sarcasme.
-- Décide 0/1 pour chaque émotion selon le TARGET uniquement.
+═══ LES 12 CATÉGORIES ÉMOTIONNELLES ═══
 
-FORMAT DE SORTIE — JSON strict, rien d'autre
+Émotions de base : Colère, Dégoût, Joie, Peur, Surprise, Tristesse
+Émotions complexes : Admiration, Culpabilité, Embarras, Fierté, Jalousie
+Autre : toute émotion ne rentrant dans aucune des 11 catégories précédentes (amour, haine, mépris, espoir, courage, soulagement, etc.)
+
+Chaque catégorie est un ensemble large. Par exemple, Colère inclut : agacement, agressivité, irritation, indignation, rage, mécontentement, etc.
+
+═══ LES 4 MODES D'EXPRESSION ═══
+
+▸ Désignée — l'émotion est NOMMÉE explicitement par un terme du lexique émotionnel.
+  Critère : le segment contient un mot dont la définition lexicographique renvoie à une émotion/sentiment/affect.
+  Exemples : "heureux" → Désignée/Joie, "en colère" → Désignée/Colère, "honte" → Désignée/Embarras, "en danger" → Désignée/Peur.
+  Cas des négations/modalisations : même si l'émotion est niée ("pas content") ou hypothétique ("aurait peur"), le terme émotionnel est annoté Désignée.
+
+▸ Comportementale — l'émotion est inférée d'une MANIFESTATION PHYSIQUE ou d'une ATTITUDE DISCURSIVE.
+  Critère : le segment décrit un comportement physiologique (pleurer, rougir, sursauter), comportemental (taper du poing, bloquer, manifester) ou discursif (accuser, reprocher, protester, rétorquer).
+  Exemples : "éclata en sanglots" → Comportementale/Tristesse, "sourit" → Comportementale/Joie, "protestent" → Comportementale/Colère.
+  Règle : le span englobe l'ensemble du syntagme verbal pertinent (verbe + arguments), en excluant les circonstants temporels.
+  ATTENTION : si un même segment combine un terme du lexique émotionnel ET un comportement (ex: "saute de joie"), créer DEUX SitEmo : une Comportementale ("saute de joie") et une Désignée ("joie").
+
+▸ Suggérée — l'émotion est DÉDUITE par le lecteur à partir de la description d'une SITUATION prototypiquement associée à un ressenti émotionnel.
+  Critère : la situation décrite est conventionnellement/socio-culturellement associée à un ressenti. C'est souvent l'événement déclencheur qui est mis en mots.
+  Exemples : "a gagné la course" → Suggérée/Joie, "a volé de l'argent" → Suggérée/Colère, "victimes d'injustices" → Suggérée/Colère.
+  ATTENTION : n'annoter comme Suggérée que les situations PROTOTYPIQUEMENT associées à une émotion, pas celles dont l'interprétation émotionnelle ne fonctionne que dans le contexte du texte.
+
+▸ Montrée — l'émotion TRANSPARAÎT au travers des caractéristiques FORMELLES de l'énoncé.
+  Critère : l'émotion est visible par des marques lexicales (interjections : "Hélas !", "Merde !"), syntaxiques (phrases exclamatives, averbales, répétitions, clivées), typographiques (points d'exclamation, points de suspension), ou connotatives (insultes, termes péjoratifs à forte charge affective).
+  Exemples : "!" → Montrée/Joie ou Surprise (selon contexte), "connard" → Montrée/Colère, "t'es dégeulasse" → Montrée/Colère.
+  Règle émojis : les émojis sont des marqueurs d'émotion Montrée. Le span est l'émoji seul (ex: 😂 → Montrée/Joie, 🤮 → Montrée/Dégoût).
+  Règle abréviations argotiques : décoder les abréviations — "ftg" = "ferme ta gueule" → Montrée/Colère, "tg" → Montrée/Colère.
+  Règle "mdr"/"ptdr" : marqueur Montrée/Joie UNIQUEMENT si un affect positif est réellement exprimé (pas si c'est un simple ponctuant conversationnel).
+  Règle ironie figée : "tu m'étonnes" est une locution figée signifiant "évidemment" → ne PAS annoter Surprise.
+  Règle questions rhétoriques : une question rhétorique qui exprime de l'indignation/du mépris → Montrée/Colère (pas Surprise).
+
+═══ RÈGLES GÉNÉRALES ═══
+
+1. Annote UNIQUEMENT le message TARGET. PREV et NEXT sont du contexte pour comprendre la phrase, rien de plus.
+2. Annote les émotions EXPRIMÉES par l'auteur du TARGET (pas celles de la victime, ni l'effet sur le lecteur).
+3. NE SUR-ANNOTE PAS. Annote uniquement les unités émotionnelles clairement identifiables et prototypiques. En cas de forte hésitation, n'annote pas et signale l'ambiguïté.
+4. Un span peut recevoir au plus DEUX catégories émotionnelles (champs "categorie" et éventuellement "categorie2").
+5. Un span n'a qu'UN SEUL mode.
+6. Les spans peuvent se chevaucher entre SitEmo différentes.
+7. Le champ "span_text" doit citer les mots EXACTS tels qu'ils apparaissent dans le message TARGET (y compris les fautes d'orthographe, l'argot, les abréviations).
+8. Une phrase peut ne contenir AUCUNE SitEmo — renvoie alors une liste vide.
+9. Le champ "justification" doit être une phrase UNIQUE et CONCISE expliquant pourquoi ce mode et cette catégorie.
+
+═══ FORMAT DE SORTIE — JSON STRICT ═══
+
+Renvoie UNIQUEMENT un objet JSON brut, sans markdown, sans commentaire, avec cette structure exacte :
+
 {
-  "metadata": {
-    "topic": "<thématique>",
-    "used_expert_annotations": true|false
-  },
-  "emotions": {
-    "Colère": 0, "Dégoût": 0, "Joie": 0, "Peur": 0,
-    "Surprise": 0, "Tristesse": 0, "Admiration": 0,
-    "Culpabilité": 0, "Embarras": 0, "Fierté": 0, "Jalousie": 0
-  },
-  "rationale_short": "Une phrase concise citant 1-2 indices linguistiques du TARGET.",
-  "ambiguities": ["indices ambigus (max 3)"]
+  "sitemo_units": [
+    {
+      "span_text": "<mots exacts du segment>",
+      "mode": "<Désignée|Comportementale|Suggérée|Montrée>",
+      "categorie": "<une des 12 catégories>",
+      "categorie2": null ou "<catégorie secondaire si applicable>",
+      "justification": "<une phrase concise>"
+    }
+  ],
+  "ambiguities": ["<éventuels cas ambigus, max 3>"]
+}
+
+Si la phrase ne contient aucune émotion :
+{
+  "sitemo_units": [],
+  "ambiguities": []
 }"""
 
 
@@ -107,7 +142,7 @@ def build_user_message(
     next_repr: Optional[Dict[str, Any]],
     annotations_block: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """Construit le message *user* injecté dans la requête Bedrock."""
+    """Construit le message *user* injecté dans la requête LLM."""
     lines: List[str] = [f"THÉMATIQUE: {thematique}", ""]
 
     # ── Fenêtre de contexte ──
@@ -117,20 +152,9 @@ def build_user_message(
     lines.append(_fmt_msg("NEXT",   next_repr))
     lines.append("</CONTEXT>")
 
-    # ── Annotations existantes (conditionnel) ──
-    if annotations_block and not _is_block_empty(annotations_block):
-        lines += ["", "<EXPERT_ANNOTATIONS>"]
-        for col, info in annotations_block.items():
-            if info["status"] == "value":
-                lines.append(f"  {col}: {info['value']}")
-            elif info["status"] == "no_consensus":
-                lines.append(f"  {col}: NO_CONSENSUS")
-            # on n'affiche pas les MISSING
-        lines.append("</EXPERT_ANNOTATIONS>")
-
     lines += [
         "",
-        "Annote le message TARGET ci-dessus. "
+        "Annote les unités SitEmo du message TARGET. "
         "Renvoie UNIQUEMENT le JSON demandé, sans markdown ni commentaire.",
     ]
     return "\n".join(lines)

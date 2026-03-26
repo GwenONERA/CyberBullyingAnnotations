@@ -25,20 +25,22 @@ import pandas as pd
 
 EMOTIONS = [
     "Colère", "Dégoût", "Joie", "Peur", "Surprise", "Tristesse",
-    "Admiration", "Culpabilité", "Embarras", "Fierté", "Jalousie",
+    "Admiration", "Culpabilité", "Embarras", "Fierté", "Jalousie", "Autre",
 ]
 
+# Mapping catégorie SitEmo → nom dans EMOTIONS (pour agrégation)
+_CAT_NORMALIZE = {e: e for e in EMOTIONS}
 
-def parse_args():
-    p = argparse.ArgumentParser(description="Supervision manuelle des annotations")
-    p.add_argument("--run1", required=True, help="JSONL du run 1")
-    p.add_argument("--run2", required=True, help="JSONL du run 2")
-    p.add_argument("--xlsx", default=None, help="XLSX original")
-    p.add_argument("--save_json", default=None,
-                   help="Fichier de sauvegarde progression (défaut: auto)")
-    p.add_argument("--out_xlsx", default=None,
-                   help="Fichier d'export XLSX (défaut: auto)")
-    return p.parse_args()
+
+def _aggregate_sitemo_to_emotions(sitemo_units):
+    """Agrège une liste SitEmo en dict d'émotions binaires (OU logique)."""
+    emo_dict = {e: 0 for e in EMOTIONS}
+    for unit in sitemo_units:
+        for field in ("categorie", "categorie2"):
+            cat = unit.get(field)
+            if cat and cat in _CAT_NORMALIZE:
+                emo_dict[_CAT_NORMALIZE[cat]] = 1
+    return emo_dict
 
 
 def load_run(path):
@@ -52,16 +54,39 @@ def load_run(path):
                    "json_ok": rec.get("json_ok", False)}
             pj = rec.get("parsed_json")
             if rec["json_ok"] and isinstance(pj, dict):
-                emo = pj.get("emotions", {})
-                for e in EMOTIONS: row[e] = int(emo.get(e, 0))
-                row["confidence"] = pj.get("metadata", {}).get("confidence")
-                row["rationale"]  = pj.get("rationale_short")
+                # Détection de format : SitEmo (nouveau) vs émotions binaires (ancien)
+                if "sitemo_units" in pj:
+                    emo = _aggregate_sitemo_to_emotions(pj.get("sitemo_units", []))
+                    for e in EMOTIONS: row[e] = int(emo.get(e, 0))
+                    row["confidence"] = None
+                    row["rationale"]  = None
+                elif "emotions" in pj:
+                    emo = pj.get("emotions", {})
+                    for e in EMOTIONS: row[e] = int(emo.get(e, 0))
+                    row["confidence"] = pj.get("metadata", {}).get("confidence")
+                    row["rationale"]  = pj.get("rationale_short")
+                else:
+                    for e in EMOTIONS: row[e] = None
+                    row["confidence"] = None
+                    row["rationale"]  = None
             else:
                 for e in EMOTIONS: row[e] = None
                 row["confidence"] = None
                 row["rationale"]  = None
             rows.append(row)
     return pd.DataFrame(rows)
+
+
+def parse_args():
+    p = argparse.ArgumentParser(description="Supervision manuelle des annotations")
+    p.add_argument("--run1", required=True, help="JSONL du run 1")
+    p.add_argument("--run2", required=True, help="JSONL du run 2")
+    p.add_argument("--xlsx", default=None, help="XLSX original")
+    p.add_argument("--save_json", default=None,
+                   help="Fichier de sauvegarde progression (défaut: auto)")
+    p.add_argument("--out_xlsx", default=None,
+                   help="Fichier d'export XLSX (défaut: auto)")
+    return p.parse_args()
 
 
 # ═══ CLASSE DE SUPERVISION ═════════════════════════════════════════════════

@@ -26,19 +26,28 @@ sns.set_theme(style="whitegrid", font_scale=1.05)
 
 EMOTIONS = [
     "Colère", "Dégoût", "Joie", "Peur", "Surprise", "Tristesse",
-    "Admiration", "Culpabilité", "Embarras", "Fierté", "Jalousie",
+    "Admiration", "Culpabilité", "Embarras", "Fierté", "Jalousie", "Autre",
 ]
 
+# Mapping catégorie (avec accents) → nom dans EMOTIONS (pour agrégation SitEmo)
+_CAT_NORMALIZE = {
+    "Colère": "Colère", "Dégoût": "Dégoût", "Joie": "Joie",
+    "Peur": "Peur", "Surprise": "Surprise", "Tristesse": "Tristesse",
+    "Admiration": "Admiration", "Culpabilité": "Culpabilité",
+    "Embarras": "Embarras", "Fierté": "Fierté", "Jalousie": "Jalousie",
+    "Autre": "Autre",
+}
 
-def parse_args():
-    p = argparse.ArgumentParser(description="Comparaison inter-runs")
-    p.add_argument("--run1", required=True, help="JSONL du run 1")
-    p.add_argument("--run2", required=True, help="JSONL du run 2")
-    p.add_argument("--xlsx", default=None, help="XLSX original (textes)")
-    p.add_argument("--out_dir", default=None, help="Dossier de sortie")
-    p.add_argument("--label_run1", default="run1", help="Label run 1")
-    p.add_argument("--label_run2", default="run2", help="Label run 2")
-    return p.parse_args()
+
+def _aggregate_sitemo_to_emotions(sitemo_units):
+    """Agrège une liste SitEmo en dict d'émotions binaires (OU logique)."""
+    emo_dict = {e: 0 for e in EMOTIONS}
+    for unit in sitemo_units:
+        for field in ("categorie", "categorie2"):
+            cat = unit.get(field)
+            if cat and cat in _CAT_NORMALIZE:
+                emo_dict[_CAT_NORMALIZE[cat]] = 1
+    return emo_dict
 
 
 def load_emotions_from_jsonl(path):
@@ -53,11 +62,26 @@ def load_emotions_from_jsonl(path):
                    "json_ok": rec.get("json_ok", False)}
             pj = rec.get("parsed_json")
             if rec.get("json_ok") and isinstance(pj, dict):
-                emo = pj.get("emotions", {})
-                for e in EMOTIONS:
-                    row[e] = emo.get(e, np.nan)
-                row["confidence"] = pj.get("metadata", {}).get("confidence")
-                row["rationale"]  = pj.get("rationale_short")
+                # Détection de format : nouveau (SitEmo) vs ancien (émotions binaires)
+                if "sitemo_units" in pj:
+                    # Nouveau format SitEmo → agréger en émotions binaires
+                    emo = _aggregate_sitemo_to_emotions(pj.get("sitemo_units", []))
+                    for e in EMOTIONS:
+                        row[e] = emo.get(e, 0)
+                    row["confidence"] = None
+                    row["rationale"]  = None
+                elif "emotions" in pj:
+                    # Ancien format : émotions binaires directes
+                    emo = pj.get("emotions", {})
+                    for e in EMOTIONS:
+                        row[e] = emo.get(e, np.nan)
+                    row["confidence"] = pj.get("metadata", {}).get("confidence")
+                    row["rationale"]  = pj.get("rationale_short")
+                else:
+                    for e in EMOTIONS:
+                        row[e] = np.nan
+                    row["confidence"] = None
+                    row["rationale"]  = None
             else:
                 for e in EMOTIONS:
                     row[e] = np.nan
@@ -65,6 +89,17 @@ def load_emotions_from_jsonl(path):
                 row["rationale"]  = None
             rows.append(row)
     return pd.DataFrame(rows)
+
+
+def parse_args():
+    p = argparse.ArgumentParser(description="Comparaison inter-runs")
+    p.add_argument("--run1", required=True, help="JSONL du run 1")
+    p.add_argument("--run2", required=True, help="JSONL du run 2")
+    p.add_argument("--xlsx", default=None, help="XLSX original (textes)")
+    p.add_argument("--out_dir", default=None, help="Dossier de sortie")
+    p.add_argument("--label_run1", default="run1", help="Label run 1")
+    p.add_argument("--label_run2", default="run2", help="Label run 2")
+    return p.parse_args()
 
 
 def main():

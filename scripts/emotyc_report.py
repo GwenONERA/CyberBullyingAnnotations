@@ -34,10 +34,42 @@ EMOTION_ORDER = [
     "Fierté", "Jalousie", "Joie", "Peur", "Surprise", "Tristesse",
 ]
 
+MODE_ORDER = ["Comportementale", "Designee", "Montree", "Suggeree"]
+
+TYPE_ORDER = ["Base", "Complexe"]
+
 ERROR_TAXONOMY = [
     "lexical_argot", "ironie_polarity", "pragmatic_confusion",
     "seuil_limite", "erreur_humain", "contexte_manquant", "autre",
 ]
+
+# ── Distribution du corpus Étienne (fine-tuning) ─────────────────────────
+# Valeurs tirées de la thèse d'Étienne, p.118 et suivantes.
+# Pourcentages calculés sur le corpus d'entraînement d'EMOTYC.
+CORPUS_ETIENNE = {
+    # Prévalence au niveau phrase
+    "Emo":              19.5,  # % des phrases contenant ≥ 1 SitEmo
+    # Distribution des modes (% des SitEmo)
+    "Suggérée":         33.1,
+    "Désignée":         24.7,
+    "Comportementale":  21.2,
+    "Montrée":          21.0,
+    # Distribution des catégories (% des SitEmo)
+    "Colère":           25.2,
+    "Peur":             21.8,
+    "Joie":             16.1,
+    "Tristesse":        14.3,
+    "Dégoût":           8.7,
+    "Surprise":         5.1,
+    "Admiration":       3.0,
+    "Fierté":           2.4,
+    "Culpabilité":      1.7,
+    "Embarras":         1.0,
+    "Jalousie":         0.7,
+    # Type
+    "Base":             90.2,
+    "Complexe":         9.8,
+}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -64,38 +96,39 @@ def load_jsonl(path):
 #  SECTION 1 : MÉTRIQUES CLASSIQUES (depuis predictions)
 # ═══════════════════════════════════════════════════════════════════════════
 
-def report_predictions(predictions):
-    """Affiche les métriques issues des prédictions EMOTYC vs gold."""
-    if not predictions:
-        print("  ⚠ Aucune prédiction chargée.")
-        return
+def _compute_section_metrics(predictions, label_names, label_key_prefix=""):
+    """
+    Reconstruit les matrices gold/pred et calcule les métriques
+    pour un ensemble de labels donné.
 
-    N = len(predictions)
-    print(f"\n{'═' * 75}")
-    print(f"  SECTION 1 — MÉTRIQUES EMOTYC vs GOLD  ({N} phrases)")
-    print(f"{'═' * 75}")
-
-    # Reconstruire les matrices
-    gold_mat = np.zeros((N, len(EMOTION_ORDER)), dtype=int)
-    pred_mat = np.zeros((N, len(EMOTION_ORDER)), dtype=int)
-
-    for i, rec in enumerate(predictions):
-        for j, emo in enumerate(EMOTION_ORDER):
-            gold_mat[i, j] = rec["golds"].get(emo, 0)
-            pred_mat[i, j] = rec["preds"].get(emo, 0)
-
-    # Métriques par émotion
+    Arguments :
+        predictions      — liste de records JSONL
+        label_names      — liste de noms de labels
+        label_key_prefix — préfixe des clés dans le record ("" pour émotions,
+                           "_mode" pour modes, etc.)
+    """
     from sklearn.metrics import (
         accuracy_score, f1_score, precision_score, recall_score,
         cohen_kappa_score,
     )
 
-    print(f"\n  {'Émotion':<15s} {'Acc':>7s} {'κ':>7s} {'F1':>7s} "
-          f"{'Prec':>7s} {'Rec':>7s} {'FP':>5s} {'FN':>5s} {'Prev%':>6s}")
-    print(f"  {'-' * 68}")
+    N = len(predictions)
+    gold_key = f"golds{label_key_prefix}" if label_key_prefix else "golds"
+    pred_key = f"preds{label_key_prefix}" if label_key_prefix else "preds"
 
+    gold_mat = np.zeros((N, len(label_names)), dtype=int)
+    pred_mat = np.zeros((N, len(label_names)), dtype=int)
+
+    for i, rec in enumerate(predictions):
+        golds = rec.get(gold_key, {})
+        preds = rec.get(pred_key, {})
+        for j, label in enumerate(label_names):
+            gold_mat[i, j] = golds.get(label, 0)
+            pred_mat[i, j] = preds.get(label, 0)
+
+    results = []
     f1s = []
-    for j, emo in enumerate(EMOTION_ORDER):
+    for j, label in enumerate(label_names):
         g, p = gold_mat[:, j], pred_mat[:, j]
         acc = accuracy_score(g, p)
         try:
@@ -104,36 +137,191 @@ def report_predictions(predictions):
             kappa = float("nan")
         f1 = f1_score(g, p, zero_division=0)
         prec = precision_score(g, p, zero_division=0)
-        rec = recall_score(g, p, zero_division=0)
+        rec_val = recall_score(g, p, zero_division=0)
         fp = int(((g == 0) & (p == 1)).sum())
         fn = int(((g == 1) & (p == 0)).sum())
         prev = g.sum() / N * 100
         f1s.append(f1)
 
-        k_str = f"{kappa:.3f}" if not np.isnan(kappa) else "  N/A"
-        print(f"  {emo:<15s} {acc:>7.3f} {k_str:>7s} {f1:>7.3f} "
-              f"{prec:>7.3f} {rec:>7.3f} {fp:>5d} {fn:>5d} {prev:>5.1f}%")
+        results.append({
+            "label": label, "accuracy": acc, "kappa": kappa,
+            "f1": f1, "precision": prec, "recall": rec_val,
+            "fp": fp, "fn": fn, "prevalence": prev,
+        })
 
-    print(f"  {'-' * 68}")
-
-    macro_f1 = np.mean(f1s)
+    macro_f1 = np.mean(f1s) if f1s else 0
     micro_f1 = f1_score(gold_mat.ravel(), pred_mat.ravel(), zero_division=0)
     exact_match = np.all(gold_mat == pred_mat, axis=1).mean()
 
-    n_div = sum(1 for r in predictions if r["n_divergences"] > 0)
+    return results, {
+        "macro_f1": macro_f1, "micro_f1": micro_f1,
+        "exact_match": exact_match, "n_samples": N,
+    }, gold_mat, pred_mat
 
-    print(f"  Macro-F1      : {macro_f1:.4f}")
-    print(f"  Micro-F1      : {micro_f1:.4f}")
-    print(f"  Exact Match   : {exact_match:.4f} ({int(exact_match * N)}/{N})")
+
+def _print_metrics_section(title, results, global_metrics, N):
+    """Affiche une section de métriques formatée."""
+    print(f"\n{'═' * 75}")
+    print(f"  {title}  ({N} phrases)")
+    print(f"{'═' * 75}")
+    print(f"\n  {'Label':<20s} {'Acc':>7s} {'κ':>7s} {'F1':>7s} "
+          f"{'Prec':>7s} {'Rec':>7s} {'FP':>5s} {'FN':>5s} {'Prev%':>6s}")
+    print(f"  {'-' * 72}")
+
+    for r in results:
+        k_str = f"{r['kappa']:.3f}" if not np.isnan(r['kappa']) else "  N/A"
+        print(f"  {r['label']:<20s} {r['accuracy']:>7.3f} {k_str:>7s} "
+              f"{r['f1']:>7.3f} {r['precision']:>7.3f} {r['recall']:>7.3f} "
+              f"{r['fp']:>5d} {r['fn']:>5d} {r['prevalence']:>5.1f}%")
+
+    print(f"  {'-' * 72}")
+    print(f"  Macro-F1      : {global_metrics['macro_f1']:.4f}")
+    print(f"  Micro-F1      : {global_metrics['micro_f1']:.4f}")
+    print(f"  Exact Match   : {global_metrics['exact_match']:.4f} "
+          f"({int(global_metrics['exact_match'] * N)}/{N})")
+
+
+def report_predictions(predictions):
+    """Affiche les métriques issues des prédictions EMOTYC vs gold."""
+    if not predictions:
+        print("  ⚠ Aucune prédiction chargée.")
+        return
+
+    N = len(predictions)
+
+    # ── Section 1a : Métriques par émotion ──
+    emo_results, emo_global, gold_mat, pred_mat = _compute_section_metrics(
+        predictions, EMOTION_ORDER
+    )
+    _print_metrics_section("SECTION 1a — MÉTRIQUES EMOTYC vs GOLD (émotions)", emo_results, emo_global, N)
+
+    n_div = sum(1 for r in predictions if r.get("n_divergences", 0) > 0)
     print(f"  Lignes diverg.: {n_div}/{N} ({n_div/N*100:.1f}%)")
 
-    return {
+    stats = {
         "n_samples": N,
         "n_divergent": n_div,
-        "macro_f1": macro_f1,
-        "micro_f1": micro_f1,
-        "exact_match": exact_match,
+        "macro_f1": emo_global["macro_f1"],
+        "micro_f1": emo_global["micro_f1"],
+        "exact_match": emo_global["exact_match"],
     }
+
+    # ── Section 1b : Métriques par mode (si disponibles) ──
+    has_mode_golds = any("golds_mode" in r for r in predictions)
+    has_mode_preds = any("preds_mode" in r for r in predictions)
+
+    if has_mode_preds and has_mode_golds:
+        mode_results, mode_global, _, _ = _compute_section_metrics(
+            predictions, MODE_ORDER, label_key_prefix="_mode"
+        )
+        _print_metrics_section("SECTION 1b — MÉTRIQUES PAR MODE D'EXPRESSION", mode_results, mode_global, N)
+
+    # ── Section 1c : Métrique Emo (caractère émotionnel, si gold dispo) ──
+    has_emo_gold = any("gold_emo" in r for r in predictions)
+    has_emo_pred = any("pred_emo" in r for r in predictions)
+
+    if has_emo_pred and has_emo_gold:
+        from sklearn.metrics import accuracy_score, f1_score, cohen_kappa_score
+        golds_emo = np.array([r.get("gold_emo", 0) for r in predictions])
+        preds_emo = np.array([r.get("pred_emo", 0) for r in predictions])
+        acc = accuracy_score(golds_emo, preds_emo)
+        try:
+            kappa = cohen_kappa_score(golds_emo, preds_emo, labels=[0, 1])
+        except Exception:
+            kappa = float("nan")
+        f1 = f1_score(golds_emo, preds_emo, zero_division=0)
+        prev = golds_emo.sum() / N * 100
+
+        print(f"\n{'═' * 75}")
+        print(f"  SECTION 1c — CARACTÈRE ÉMOTIONNEL (Emo)  ({N} phrases)")
+        print(f"{'═' * 75}")
+        k_str = f"{kappa:.3f}" if not np.isnan(kappa) else "  N/A"
+        print(f"  Acc={acc:.3f}  κ={k_str}  F1={f1:.3f}  Prévalence={prev:.1f}%")
+
+    # ── Section 1d : Métriques Type (Base/Complexe, si gold dispo) ──
+    has_type_golds = any("golds_type" in r for r in predictions)
+    has_type_preds = any("preds_type" in r for r in predictions)
+
+    if has_type_preds and has_type_golds:
+        type_results, type_global, _, _ = _compute_section_metrics(
+            predictions, TYPE_ORDER, label_key_prefix="_type"
+        )
+        _print_metrics_section("SECTION 1d — MÉTRIQUES TYPE (Base/Complexe)", type_results, type_global, N)
+
+    # ── Section : Distribution comparée corpus Étienne ──
+    _report_distribution_comparison(predictions, gold_mat)
+
+    return stats
+
+
+def _report_distribution_comparison(predictions, gold_mat):
+    """Affiche un tableau comparatif des distributions avec le corpus Étienne."""
+    N = len(predictions)
+
+    print(f"\n{'═' * 75}")
+    print(f"  DISTRIBUTION COMPARÉE — Corpus Étienne (fine-tuning) vs Corpus actuel (gold)")
+    print(f"{'═' * 75}")
+    print(f"\n  {'':30s} {'Corpus Étienne':>18s}  {'Corpus actuel':>16s}")
+    print(f"  {'-' * 70}")
+
+    # Emo : % des phrases avec ≥ 1 émotion
+    n_emo = int(gold_mat.sum(axis=1).clip(max=1).sum())
+    pct_emo = n_emo / N * 100 if N > 0 else 0
+    etienne_emo = CORPUS_ETIENNE.get("Emo", 0)
+    print(f"  {'Emo (≥1 émotion)':<30s} {etienne_emo:>17.1f}%  {pct_emo:>15.1f}%")
+
+    # Modes — calculer la prévalence sur les phrases gold
+    mode_mapping = {
+        "Comportementale": "Comportementale",
+        "Désignée":        "Designee",
+        "Montrée":         "Montree",
+        "Suggérée":        "Suggeree",
+    }
+
+    for display_name, col_name in [
+        ("Suggérée", "Suggeree"), ("Désignée", "Designee"),
+        ("Comportementale", "Comportementale"), ("Montrée", "Montree")
+    ]:
+        etienne_val = CORPUS_ETIENNE.get(display_name, 0)
+        # Essayer de calculer la prévalence du mode dans le gold
+        # Chercher dans les records la clé golds_mode
+        n_mode = 0
+        has_data = False
+        for rec in predictions:
+            golds_mode = rec.get("golds_mode", {})
+            if golds_mode and col_name in golds_mode:
+                has_data = True
+                if golds_mode[col_name] == 1:
+                    n_mode += 1
+        if has_data:
+            pct_mode = n_mode / N * 100
+            print(f"  {display_name:<30s} {etienne_val:>17.1f}%  {pct_mode:>15.1f}%")
+        else:
+            print(f"  {display_name:<30s} {etienne_val:>17.1f}%  {'N/A':>16s}")
+
+    # Émotions
+    for j, emo in enumerate(EMOTION_ORDER):
+        etienne_val = CORPUS_ETIENNE.get(emo, 0)
+        n_pos = int(gold_mat[:, j].sum())
+        pct_pos = n_pos / N * 100 if N > 0 else 0
+        print(f"  {emo:<30s} {etienne_val:>17.1f}%  {pct_pos:>15.1f}%")
+
+    # Type
+    for t in TYPE_ORDER:
+        etienne_val = CORPUS_ETIENNE.get(t, 0)
+        n_type = 0
+        has_data = False
+        for rec in predictions:
+            golds_type = rec.get("golds_type", {})
+            if golds_type and t in golds_type:
+                has_data = True
+                if golds_type[t] == 1:
+                    n_type += 1
+        if has_data:
+            pct_type = n_type / N * 100
+            print(f"  {t:<30s} {etienne_val:>17.1f}%  {pct_type:>15.1f}%")
+        else:
+            print(f"  {t:<30s} {etienne_val:>17.1f}%  {'N/A':>16s}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -300,10 +488,8 @@ def report_diagnostic(diag_records):
     print(f"\n  Faux positifs : {fp_count}  |  Faux négatifs : {fn_count}")
 
     # ── Exemples de phrases par type d'erreur ──
-    # Index des textes par idx pour lookup rapide
     text_by_idx = {rec["idx"]: rec.get("text", "") for rec in valid}
 
-    # Grouper les verdicts par type d'erreur
     examples_by_type = defaultdict(list)
     for v in all_verdicts:
         err_type = v.get("type_erreur", "?")
@@ -507,7 +693,7 @@ def main():
     print(f"    Double-blind : {len(blind_records)} lignes")
     print(f"    Diagnostic   : {len(diag_records)} lignes")
 
-    # Section 1 : Métriques classiques
+    # Section 1 : Métriques classiques (+ modes, emo, type, distribution Étienne)
     pred_stats = report_predictions(predictions)
 
     # Section 2 : Double-blind
