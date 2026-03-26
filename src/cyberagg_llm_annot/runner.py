@@ -162,7 +162,62 @@ def validate_annotation(
     return warnings
 
 
+# ── Persistance complète JSONL ─────────────────────────────────────────────
+
+def load_jsonl_records(jsonl_path: str) -> List[Dict[str, Any]]:
+    """Charge l'intégralité d'un fichier JSONL en mémoire."""
+    records = []
+    if not os.path.exists(jsonl_path):
+        return records
+    with open(jsonl_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                records.append(json.loads(line))
+    return records
+
+
+def save_jsonl_records(jsonl_path: str, records: List[Dict[str, Any]]) -> None:
+    """Écrit (écrase) l'intégralité des records dans un fichier JSONL."""
+    with open(jsonl_path, "w", encoding="utf-8") as f:
+        for rec in records:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+
 # ── Persistance d'une itération ────────────────────────────────────────────
+
+def build_record(
+    run_id: str,
+    idx: int,
+    row_id: Any,
+    prompt: str,
+    raw_text: str,
+    llm_result: Dict[str, Any],
+    parsed_json: Optional[Dict[str, Any]],
+    json_ok: bool,
+    json_error: Optional[str],
+    validation_warnings: Optional[List[str]] = None,
+    extra_meta: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Construit le dictionnaire de base d'un enregistrement."""
+    record: Dict[str, Any] = {
+        "run_id":               run_id,
+        "idx":                  idx,
+        "row_id":               row_id,
+        "timestamp_utc":        utc_now_iso(),
+        "json_ok":              json_ok,
+        "json_error":           json_error,
+        "validation_warnings":  validation_warnings or [],
+        "raw_text":             raw_text,
+        "parsed_json":          parsed_json,
+        "llm_result":           llm_result,
+        "prompt":               prompt,
+    }
+    if extra_meta:
+        record["meta"] = extra_meta
+
+    return record
+
 
 def persist_iteration(
     out_dir: str,
@@ -180,21 +235,10 @@ def persist_iteration(
 ) -> None:
     ensure_dir(out_dir)
 
-    record: Dict[str, Any] = {
-        "run_id":               run_id,
-        "idx":                  idx,
-        "row_id":               row_id,
-        "timestamp_utc":        utc_now_iso(),
-        "json_ok":              json_ok,
-        "json_error":           json_error,
-        "validation_warnings":  validation_warnings or [],
-        "raw_text":             raw_text,
-        "parsed_json":          parsed_json,
-        "llm_result":           llm_result,
-        "prompt":               prompt,
-    }
-    if extra_meta:
-        record["meta"] = extra_meta
+    record = build_record(
+        run_id, idx, row_id, prompt, raw_text, llm_result,
+        parsed_json, json_ok, json_error, validation_warnings, extra_meta
+    )
 
     # 1) Log JSONL append-only (artefact principal)
     append_jsonl(os.path.join(out_dir, f"{run_id}.jsonl"), record)

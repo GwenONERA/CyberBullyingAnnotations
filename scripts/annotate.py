@@ -62,7 +62,8 @@ from cyberagg_llm_annot.prompt_utils import (
 )
 from cyberagg_llm_annot.runner import (
     load_progress, save_progress, try_parse_json,
-    validate_annotation, persist_iteration, cleanup_items_dir,
+    validate_annotation, persist_iteration, build_record,
+    cleanup_items_dir, load_jsonl_records, save_jsonl_records
 )
 from cyberagg_llm_annot.io_utils import ensure_dir
 
@@ -95,6 +96,11 @@ def parse_args():
     # ── Annotations d'experts ──
     p.add_argument("--use_annotations", action="store_true",
                     help="Intégrer les annotations d'experts dans le prompt")
+    
+    # ── Paramètres d'exécution ──
+    p.add_argument("--retry_idx", type=int, nargs="+", default=None,
+                   help="Liste d'index (idx) à ré-annoter spécifiquement (ex: --retry_idx 51 52). "
+                        "Met à jour le fichier JSONL existant in-place.")
 
     # ── Paramètres LLM ──
     p.add_argument("--max_tokens", type=int, default=512,
@@ -138,17 +144,38 @@ def main():
     provider = get_provider(args.model_provider, args.model, **provider_kwargs)
     print(f"✓ Provider : {args.model_provider} / {args.model}")
 
-    # ═══ 4. REPRISE ═══════════════════════════════════════════════════════
+    # ═══ 4. REPRISE OU RETRY CIBLÉ ════════════════════════════════════════
     progress = load_progress(progress_path)
-    start_idx = progress["last_completed_idx"] + 1
     total = len(df)
-    print(f"▸ Reprise à idx={start_idx} / {total}")
+    jsonl_path = os.path.join(out_dir, f"{args.run_id}.jsonl")
+    
+    is_retry_mode = args.retry_idx is not None
+    if is_retry_mode:
+        indices_to_run = args.retry_idx
+        print(f"▸ MODE RETRY : ré-annotation ciblée des {len(indices_to_run)} index ({indices_to_run})")
+        # Charger tout le JSONL existant en mémoire
+        all_records = load_jsonl_records(jsonl_path)
+        if not all_records:
+            print(f"⚠ Fichier {jsonl_path} vide ou inexistant. Impossible de faire un retry in-place complet.")
+    else:
+        start_idx = progress["last_completed_idx"] + 1
+        indices_to_run = list(range(start_idx, total))
+        print(f"▸ MODE STANDARD : reprise à idx={start_idx} / {total}")
+
+    if not indices_to_run:
+        print("✓ Rien à faire.")
+        return
 
     # ═══ 5. BOUCLE PRINCIPALE ═════════════════════════════════════════════
     errors = 0
     t0 = time.time()
+    done = 0
 
-    for idx in range(start_idx, total):
+    for idx in indices_to_run:
+        if idx >= total or idx < 0:
+            print(f"⚠ L'index {idx} est hors limites (0-{total-1}). Ignoré.")
+            continue
+            
         # ── Fenêtre prev / target / next ──
         w = get_message_window(df, idx)
         prev_repr   = minimal_msg_repr(w["prev"])
@@ -194,41 +221,61 @@ def main():
                 f"stop_reason={stop_reason} (troncature probable)"
             )
 
-        # ── Persistance immédiate ──
         row_id = row_dict.get("ID", idx)
         full_prompt_log = f"[SYSTEM]\n{SYSTEM_PROMPT}\n\n[USER]\n{user_message}"
+        extra_meta = {
+            "thematique":      args.thematique,
+            "model_provider":  args.model_provider,
+            "model":           args.model,
+            "stop_reason":     stop_reason,
+            "target_role":     row_dict.get("ROLE"),
+            "target_name":     row_dict.get("NAME"),
+            "use_annotations": args.use_annotations,
+        }
 
-        persist_iteration(
-            out_dir=out_dir,
-            run_id=args.run_id,
-            idx=idx,
-            row_id=row_id,
-            prompt=full_prompt_log,
-            raw_text=raw_text,
-            llm_result=llm_result,
-            parsed_json=parsed_obj,
-            json_ok=json_ok,
-            json_error=json_error,
-            validation_warnings=validation_warnings,
-            extra_meta={
-                "thematique":      args.thematique,
-                "model_provider":  args.model_provider,
-                "model":           args.model,
-                "stop_reason":     stop_reason,
-                "target_role":     row_dict.get("ROLE"),
-                "target_name":     row_dict.get("NAME"),
-                "use_annotations": args.use_annotations,
-            },
-        )
+        # ── Persistance / Mise à jour ──
+        if is_retry_mode:
+            # Remplacement en mémoire du record
+            new_record = build_record(
+                args.run_id, idx, row_id, full_prompt_log, raw_text, llm_result,
+                parsed_obj, json_ok, json_error, validation_warnings, extra_meta
+            )
+            # Chercher le record existant
+            replaced = False
+            for i, rec in enumerate(all_records):
+                if rec.get("idx") == idx:
+                    all_records[i] = new_record
+                    replaced = True
+                    break
+            if not replaced:
+                all_records.append(new_record)
+                # On trie pour être sûr que ça reste ordonné si on ajoute à la fin
+                all_records.sort(key=lambda x: x.get("idx", 0))
+        else:
+            # Mode standard : on append au jsonl et on écrit les temp files
+            persist_iteration(
+                out_dir=out_dir,
+                run_id=args.run_id,
+                idx=idx,
+                row_id=row_id,
+                prompt=full_prompt_log,
+                raw_text=raw_text,
+                llm_result=llm_result,
+                parsed_json=parsed_obj,
+                json_ok=json_ok,
+                json_error=json_error,
+                validation_warnings=validation_warnings,
+                extra_meta=extra_meta,
+            )
+            # Progression
+            save_progress(progress_path, last_completed_idx=idx)
 
-        # ── Progression (après sauvegarde !) ──
-        save_progress(progress_path, last_completed_idx=idx)
         if not json_ok:
             errors += 1
 
         # ── Monitoring ──
-        done    = idx - start_idx + 1
-        remain  = total - idx - 1
+        done += 1
+        remain  = len(indices_to_run) - done
         elapsed = time.time() - t0
         avg     = elapsed / done
         eta     = avg * remain
@@ -243,6 +290,11 @@ def main():
 
         time.sleep(args.delay)
 
+    # ═══ 5b. SAUVEGARDE FINALE POUR LE MODE RETRY ══════════════════════════
+    if is_retry_mode:
+        print(f"▸ Écriture in-place de {len(all_records)} lignes dans {jsonl_path}...")
+        save_jsonl_records(jsonl_path, all_records)
+
     # ═══ 6. NETTOYAGE items/ ═══════════════════════════════════════════════
     n_cleaned = cleanup_items_dir(out_dir, args.run_id)
     if n_cleaned:
@@ -250,12 +302,11 @@ def main():
 
     # ═══ 7. RÉSUMÉ ═════════════════════════════════════════════════════════
     elapsed_total = time.time() - t0
-    processed = total - start_idx
     print(f"\n{'='*60}")
-    print(f"Terminé. {processed} items traités en {elapsed_total/60:.1f} min")
-    print(f"Erreurs JSON : {errors}/{processed}")
+    print(f"Terminé. {done} items traités en {elapsed_total/60:.1f} min")
+    print(f"Erreurs JSON : {errors}/{done}")
     print(f"Sorties dans : {out_dir}")
-    print(f"JSONL final  : {os.path.join(out_dir, args.run_id + '.jsonl')}")
+    print(f"JSONL final  : {jsonl_path}")
 
 
 if __name__ == "__main__":
