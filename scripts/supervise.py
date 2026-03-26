@@ -28,14 +28,14 @@ EMOTIONS = [
     "Admiration", "Culpabilité", "Embarras", "Fierté", "Jalousie", "Autre",
 ]
 
-# Mapping catégorie SitEmo → nom dans EMOTIONS (pour agrégation)
 _CAT_NORMALIZE = {e: e for e in EMOTIONS}
 
 
 def _aggregate_sitemo_to_emotions(sitemo_units):
-    """Agrège une liste SitEmo en dict d'émotions binaires (OU logique)."""
     emo_dict = {e: 0 for e in EMOTIONS}
     for unit in sitemo_units:
+        if not isinstance(unit, dict):
+            continue
         for field in ("categorie", "categorie2"):
             cat = unit.get(field)
             if cat and cat in _CAT_NORMALIZE:
@@ -48,30 +48,36 @@ def load_run(path):
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
-            if not line: continue
+            if not line:
+                continue
             rec = json.loads(line)
             row = {"idx": rec["idx"], "row_id": rec.get("row_id"),
                    "json_ok": rec.get("json_ok", False),
                    "raw_text": rec.get("raw_text", "{}")}
             pj = rec.get("parsed_json")
+            row["parsed_json"] = pj if isinstance(pj, dict) else {}
+
             if rec["json_ok"] and isinstance(pj, dict):
-                # Détection de format : SitEmo (nouveau) vs émotions binaires (ancien)
                 if "sitemo_units" in pj:
                     emo = _aggregate_sitemo_to_emotions(pj.get("sitemo_units", []))
-                    for e in EMOTIONS: row[e] = int(emo.get(e, 0))
+                    for e in EMOTIONS:
+                        row[e] = int(emo.get(e, 0))
                     row["confidence"] = None
                     row["rationale"]  = None
                 elif "emotions" in pj:
                     emo = pj.get("emotions", {})
-                    for e in EMOTIONS: row[e] = int(emo.get(e, 0))
+                    for e in EMOTIONS:
+                        row[e] = int(emo.get(e, 0))
                     row["confidence"] = pj.get("metadata", {}).get("confidence")
                     row["rationale"]  = pj.get("rationale_short")
                 else:
-                    for e in EMOTIONS: row[e] = None
+                    for e in EMOTIONS:
+                        row[e] = None
                     row["confidence"] = None
                     row["rationale"]  = None
             else:
-                for e in EMOTIONS: row[e] = None
+                for e in EMOTIONS:
+                    row[e] = None
                 row["confidence"] = None
                 row["rationale"]  = None
             rows.append(row)
@@ -130,7 +136,8 @@ class SupervisionUI:
         self.btn_prev = W.Button(description="◄ Préc.", layout=W.Layout(width="85px"))
         self.btn_next = W.Button(description="Suiv. ►", layout=W.Layout(width="85px"))
         self.btn_skip = W.Button(description="→ Non-revu suivant",
-                                 button_style="warning", layout=W.Layout(width="170px"))
+                                 button_style="warning",
+                                 layout=W.Layout(width="170px"))
         self.lbl_pos  = W.HTML()
         self.inp_jump = W.BoundedIntText(
             value=0, min=0, max=max(1, int(df["idx"].max())),
@@ -150,7 +157,7 @@ class SupervisionUI:
             self.emo_parts[e] = parts
             emo_children.append(row_w)
         self.vbox_emos = W.VBox(emo_children)
-        
+
         self.html_sitemo = W.HTML()
         self.txt_notes = W.Textarea(
             placeholder="Notes du réviseur (optionnel)…",
@@ -171,7 +178,7 @@ class SupervisionUI:
             self.tog_filter,
             W.HBox([self.bar_progress, self.lbl_progress]),
             W.HBox([self.btn_prev, self.btn_next, self.btn_skip,
-                    W.HTML("&nbsp;"), self.lbl_pos]),
+                     W.HTML("&nbsp;"), self.lbl_pos]),
             W.HBox([self.inp_jump, self.btn_jump]),
             W.HTML("<hr style='margin:4px 0'>"),
             self.html_msg,
@@ -226,16 +233,21 @@ class SupervisionUI:
 
     def _update_filter(self):
         if self.only_diverg:
-            self.filtered = [i for i in range(self.n) if self.df.iloc[i]["n_div"] > 0]
+            self.filtered = [i for i in range(self.n)
+                             if self.df.iloc[i]["n_div"] > 0]
         else:
             self.filtered = list(range(self.n))
-        if not self.filtered: self.pos = 0
-        else: self.pos = max(0, min(self.pos, len(self.filtered) - 1))
+        if not self.filtered:
+            self.pos = 0
+        else:
+            self.pos = max(0, min(self.pos, len(self.filtered) - 1))
 
     def _on_filter(self, change):
         self.only_diverg = change["new"]
-        self._update_filter(); self.pos = 0
-        self.lbl_status.value = ""; self._render()
+        self._update_filter()
+        self.pos = 0
+        self.lbl_status.value = ""
+        self._render()
 
     def _ri(self):
         return self.filtered[self.pos] if self.filtered else None
@@ -243,38 +255,50 @@ class SupervisionUI:
     def _go(self, delta):
         new = self.pos + delta
         if 0 <= new < len(self.filtered):
-            self.pos = new; self.lbl_status.value = ""; self._render()
+            self.pos = new
+            self.lbl_status.value = ""
+            self._render()
 
     def _go_unreviewed(self, _):
         for offset in range(1, len(self.filtered) + 1):
             p = (self.pos + offset) % len(self.filtered)
             if self.filtered[p] not in self.decisions:
-                self.pos = p; self.lbl_status.value = ""; self._render(); return
-        self.lbl_status.value = ("<span style='color:#27ae60;font-weight:bold'>"
-                                 "✓ Tous les messages revus !</span>")
+                self.pos = p
+                self.lbl_status.value = ""
+                self._render()
+                return
+        self.lbl_status.value = (
+            "<span style='color:#27ae60;font-weight:bold'>"
+            "✓ Tous les messages revus !</span>")
 
     def _go_jump(self, _):
         target = self.inp_jump.value
         best, best_d = 0, float("inf")
         for i, fi in enumerate(self.filtered):
             d = abs(int(self.df.iloc[fi]["idx"]) - target)
-            if d < best_d: best, best_d = i, d
-        self.pos = best; self.lbl_status.value = ""; self._render()
+            if d < best_d:
+                best, best_d = i, d
+        self.pos = best
+        self.lbl_status.value = ""
+        self._render()
 
     def _render(self):
         ri = self._ri()
         if ri is None:
-            self.html_msg.value = "<h3 style='color:#888'>Aucun message.</h3>"; return
+            self.html_msg.value = "<h3 style='color:#888'>Aucun message.</h3>"
+            return
 
         row = self.df.iloc[ri]
         is_rev = ri in self.decisions
-        n_div = int(row["n_div"]); orig_idx = int(row["idx"])
+        n_div = int(row["n_div"])
+        orig_idx = int(row["idx"])
 
         n_rev = sum(1 for fi in self.filtered if fi in self.decisions)
         self.bar_progress.max = max(1, len(self.filtered))
         self.bar_progress.value = n_rev
         pct = n_rev / len(self.filtered) * 100 if self.filtered else 0
-        self.lbl_progress.value = (f"<b>{n_rev}/{len(self.filtered)}</b> revus ({pct:.0f}%)")
+        self.lbl_progress.value = (
+            f"<b>{n_rev}/{len(self.filtered)}</b> revus ({pct:.0f}%)")
 
         tag = "✅ revu" if is_rev else "🔶 à revoir"
         self.lbl_pos.value = f"<b>idx={orig_idx}</b> | {tag}"
@@ -282,11 +306,12 @@ class SupervisionUI:
         text = str(row.get("TEXT", ""))
         name = str(row.get("NAME", "?"))
         role = str(row.get("ROLE", "?"))
-        div_badge = (f"<span style='background:#e74c3c;color:#fff;padding:3px 10px;"
-                     f"border-radius:5px;font-weight:bold'>⚠ {n_div} divergence(s)</span>"
-                     if n_div > 0 else
-                     "<span style='background:#27ae60;color:#fff;padding:3px 10px;"
-                     "border-radius:5px'>✓ Accord complet</span>")
+        div_badge = (
+            f"<span style='background:#e74c3c;color:#fff;padding:3px 10px;"
+            f"border-radius:5px;font-weight:bold'>⚠ {n_div} divergence(s)</span>"
+            if n_div > 0 else
+            "<span style='background:#27ae60;color:#fff;padding:3px 10px;"
+            "border-radius:5px'>✓ Accord complet</span>")
         self.html_msg.value = (
             f"<div style='background:#f8f9fa;padding:12px;border-radius:8px;"
             f"border:1px solid #dee2e6'><div style='margin-bottom:8px'>"
@@ -302,46 +327,81 @@ class SupervisionUI:
             r1v = int(row[f"{e}_r1"]) if pd.notna(row[f"{e}_r1"]) else 0
             r2v = int(row[f"{e}_r2"]) if pd.notna(row[f"{e}_r2"]) else 0
             div = r1v != r2v
-            wd["flag"].value = "⚠️" if div else "<span style='color:#27ae60'>✓</span>"
+            wd["flag"].value = ("⚠️" if div
+                                else "<span style='color:#27ae60'>✓</span>")
             bg = "#fff3cd" if div else "transparent"
             fw = "bold" if div else "normal"
-            wd["label"].value = (f"<span style='background:{bg};padding:3px 6px;"
-                                 f"border-radius:4px;font-weight:{fw}'>{e}</span>")
-            c = "#3498db" if div else "#bdc3c7"
+            wd["label"].value = (
+                f"<span style='background:{bg};padding:3px 6px;"
+                f"border-radius:4px;font-weight:{fw}'>{e}</span>")
+            c  = "#3498db" if div else "#bdc3c7"
             c2 = "#e67e22" if div else "#bdc3c7"
             wd["r1"].value = self._badge(r1v, c)
             wd["r2"].value = self._badge(r2v, c2)
             wd["toggle"].value = int(prev_dec[e]) if e in prev_dec else r1v
 
-        # ── Parsing SitEmo (raw json) ──
-        def _format_sitemo(raw_str, run_label):
-            html = f"<div style='margin-bottom:8px'><b>{run_label} :</b><ul style='margin-top:4px;padding-left:20px'>"
+        # ── Affichage SitEmo ─────────────────────────────────────────
+        def _format_sitemo(content, run_label):
+            html = (f"<div style='margin-bottom:8px'><b>{run_label} :</b>"
+                    f"<ul style='margin-top:4px;padding-left:20px'>")
             try:
-                content = json.loads(raw_str)
-                # Fallback support for old schema if any
-                if "emotions" in content and "sitemo_units" not in content:
-                    html += f"<li><i>Ancien format binaire détecté (pas de spans SitEmo).</i></li>"
+                # ── Si on reçoit une str, tenter json.loads ──
+                if isinstance(content, str):
+                    try:
+                        content = json.loads(content)
+                    except (json.JSONDecodeError, ValueError):
+                        html += ("<li><i>Impossible de parser le JSON "
+                                 "brut.</i></li>")
+                        return html + "</ul></div>"
+
+                if not isinstance(content, dict) or not content:
+                    html += ("<li><i>Aucune donnée valide "
+                             "(JSON malformé ou vide).</i></li>")
+                elif "emotions" in content and "sitemo_units" not in content:
+                    html += ("<li><i>Ancien format binaire détecté "
+                             "(pas de spans SitEmo).</i></li>")
                     if "rationale_short" in content:
-                        html += f"<li><b>Rationale :</b> <i>{content['rationale_short']}</i></li>"
+                        html += (f"<li><b>Rationale :</b> "
+                                 f"<i>{content['rationale_short']}</i></li>")
                 else:
-                    units = content.get('sitemo_units', [])
+                    units = content.get("sitemo_units", [])
+                    if not isinstance(units, list):
+                        units = []
                     if not units:
-                        html += "<li><i>Aucune émotion/span détecté.</i></li>"
+                        html += ("<li><i>Aucune émotion/span "
+                                 "détecté.</i></li>")
                     for unit in units:
-                        span = unit.get('span_text', 'N/A')
-                        mode = unit.get('mode', 'N/A')
-                        cat = unit.get('categorie', 'N/A')
-                        justif = unit.get('justification', 'N/A')
-                        html += (f"<li style='margin-bottom:6px'><b>Span:</b> <code style='background:#e9ecef;padding:2px 4px'>{span}</code><br>"
-                                 f"<b>Catégorie:</b> {cat} | <b>Mode:</b> {mode}<br>"
-                                 f"<b>Justification:</b> <i>{justif}</i></li>")
+                        if not isinstance(unit, dict):
+                            html += (f"<li><i>Unité mal formée : "
+                                     f"{unit}</i></li>")
+                            continue
+                        span   = unit.get("span_text",     "N/A")
+                        mode   = unit.get("mode",          "N/A")
+                        cat    = unit.get("categorie",     "N/A")
+                        justif = unit.get("justification", "N/A")
+                        html += (
+                            f"<li style='margin-bottom:6px'>"
+                            f"<b>Span:</b> <code style='background:#e9ecef;"
+                            f"padding:2px 4px'>{span}</code><br>"
+                            f"<b>Catégorie:</b> {cat} | "
+                            f"<b>Mode:</b> {mode}<br>"
+                            f"<b>Justification:</b> "
+                            f"<i>{justif}</i></li>")
             except Exception as e:
-                html += f"<li><i>Erreur de parsing ({e})</i></li>"
+                html += f"<li><i>Erreur d'affichage ({e})</i></li>"
             html += "</ul></div>"
             return html
 
-        sitemo_r1 = _format_sitemo(str(row.get("raw_text_r1", "{}")), "Output Run 1")
-        sitemo_r2 = _format_sitemo(str(row.get("raw_text_r2", "{}")), "Output Run 2")
+        # ── Récupérer les dicts parsed_json (pas les raw_text) ──
+        pj_r1 = row.get("parsed_json_r1", {})
+        pj_r2 = row.get("parsed_json_r2", {})
+        if not isinstance(pj_r1, dict):
+            pj_r1 = {}
+        if not isinstance(pj_r2, dict):
+            pj_r2 = {}
+
+        sitemo_r1 = _format_sitemo(pj_r1, "Output Run 1")
+        sitemo_r2 = _format_sitemo(pj_r2, "Output Run 2")
 
         self.html_sitemo.value = (
             f"<div style='font-size:13px;background:#f8f9fa;padding:12px;"
@@ -349,71 +409,92 @@ class SupervisionUI:
             f"<div style='display:flex;gap:20px;'>"
             f"<div style='flex:1'>{sitemo_r1}</div>"
             f"<div style='flex:1'>{sitemo_r2}</div>"
-            f"</div></div>"
-        )
+            f"</div></div>")
         self.txt_notes.value = prev_dec.get("notes", "")
 
     def _on_validate(self, _):
         ri = self._ri()
-        if ri is None: return
+        if ri is None:
+            return
         decision = {}
-        for e in EMOTIONS: decision[e] = int(self.emo_parts[e]["toggle"].value)
+        for e in EMOTIONS:
+            decision[e] = int(self.emo_parts[e]["toggle"].value)
         decision["notes"] = self.txt_notes.value
         decision["reviewed_at"] = datetime.now(timezone.utc).isoformat()
-        self.decisions[ri] = decision; self._save()
+        self.decisions[ri] = decision
+        self._save()
         orig_idx = int(self.df.iloc[ri]["idx"])
         found = self._advance_unreviewed()
         if found:
-            self.lbl_status.value = (f"<span style='color:#27ae60'>✓ idx={orig_idx} "
-                                     f"sauvegardé — prochain non-revu affiché</span>")
+            self.lbl_status.value = (
+                f"<span style='color:#27ae60'>✓ idx={orig_idx} "
+                f"sauvegardé — prochain non-revu affiché</span>")
         else:
-            self.lbl_status.value = (f"<span style='color:#27ae60;font-weight:bold'>"
-                                     f"✓ idx={orig_idx} — Tous revus !</span>")
+            self.lbl_status.value = (
+                f"<span style='color:#27ae60;font-weight:bold'>"
+                f"✓ idx={orig_idx} — Tous revus !</span>")
 
     def _advance_unreviewed(self):
         for offset in range(1, len(self.filtered) + 1):
             p = (self.pos + offset) % len(self.filtered)
             if self.filtered[p] not in self.decisions:
-                self.pos = p; self._render(); return True
-        self._render(); return False
+                self.pos = p
+                self._render()
+                return True
+        self._render()
+        return False
 
     def _on_export(self, _):
         rows_out = []
         for i in range(self.n):
-            row = self.df.iloc[i]; orig_idx = int(row["idx"])
+            row = self.df.iloc[i]
+            orig_idx = int(row["idx"])
             out = {"idx": orig_idx}
             if self.df_orig is not None and orig_idx < len(self.df_orig):
-                for col in self.df_orig.columns: out[col] = self.df_orig.iloc[orig_idx][col]
+                for col in self.df_orig.columns:
+                    out[col] = self.df_orig.iloc[orig_idx][col]
             if i in self.decisions:
                 dec = self.decisions[i]
-                for e in EMOTIONS: out[e] = dec.get(e)
-                out["reviewed"] = True; out["reviewer_notes"] = dec.get("notes", "")
+                for e in EMOTIONS:
+                    out[e] = dec.get(e)
+                out["reviewed"] = True
+                out["reviewer_notes"] = dec.get("notes", "")
             else:
                 for e in EMOTIONS:
-                    r1, r2 = row.get(f"{e}_r1"), row.get(f"{e}_r2")
-                    out[e] = int(r1) if (pd.notna(r1) and pd.notna(r2) and int(r1)==int(r2)) else None
-                out["reviewed"] = False; out["reviewer_notes"] = ""
+                    r1 = row.get(f"{e}_r1")
+                    r2 = row.get(f"{e}_r2")
+                    out[e] = (int(r1)
+                              if (pd.notna(r1) and pd.notna(r2)
+                                  and int(r1) == int(r2))
+                              else None)
+                out["reviewed"] = False
+                out["reviewer_notes"] = ""
             for e in EMOTIONS:
-                out[f"{e}_run1"] = int(row[f"{e}_r1"]) if pd.notna(row[f"{e}_r1"]) else None
-                out[f"{e}_run2"] = int(row[f"{e}_r2"]) if pd.notna(row[f"{e}_r2"]) else None
+                out[f"{e}_run1"] = (int(row[f"{e}_r1"])
+                                    if pd.notna(row[f"{e}_r1"]) else None)
+                out[f"{e}_run2"] = (int(row[f"{e}_r2"])
+                                    if pd.notna(row[f"{e}_r2"]) else None)
             out["n_divergences"] = int(row["n_div"])
             rows_out.append(out)
 
         df_out = pd.DataFrame(rows_out)
         lead = [c for c in ["idx"] if c in df_out.columns]
         if self.df_orig is not None:
-            lead += [c for c in self.df_orig.columns if c in df_out.columns and c not in lead]
-        ordered = lead + EMOTIONS + ["reviewed","reviewer_notes","n_divergences"]
-        ordered += [f"{e}_{s}" for e in EMOTIONS for s in ("run1","run2")]
+            lead += [c for c in self.df_orig.columns
+                     if c in df_out.columns and c not in lead]
+        ordered = (lead + EMOTIONS
+                   + ["reviewed", "reviewer_notes", "n_divergences"])
+        ordered += [f"{e}_{s}" for e in EMOTIONS for s in ("run1", "run2")]
         rest = [c for c in df_out.columns if c not in ordered]
-        df_out = df_out[[c for c in ordered+rest if c in df_out.columns]]
+        df_out = df_out[[c for c in ordered + rest if c in df_out.columns]]
         df_out.to_excel(self.export_path, index=False, engine="openpyxl")
 
         n_rev = len(self.decisions)
         self.lbl_status.value = (
             f"<div style='color:#155724;background:#d4edda;padding:10px;"
             f"border-radius:6px;font-weight:bold'>"
-            f"✓ Exporté → <code>{self.export_path}</code> ({n_rev} revus)</div>")
+            f"✓ Exporté → <code>{self.export_path}</code> "
+            f"({n_rev} revus)</div>")
 
     def show(self):
         self._display(self.ui)
@@ -427,8 +508,10 @@ def main():
     df_r1 = load_run(args.run1)
     df_r2 = load_run(args.run2)
 
-    merged = pd.merge(df_r1, df_r2, on="idx", how="inner", suffixes=("_r1", "_r2"))
-    merged = merged[merged["json_ok_r1"] & merged["json_ok_r2"]].reset_index(drop=True)
+    merged = pd.merge(df_r1, df_r2, on="idx", how="inner",
+                      suffixes=("_r1", "_r2"))
+    merged = merged[merged["json_ok_r1"] & merged["json_ok_r2"]]\
+        .reset_index(drop=True)
 
     df_orig = None
     if args.xlsx and os.path.exists(args.xlsx):
@@ -440,20 +523,23 @@ def main():
 
     for e in EMOTIONS:
         merged[f"{e}_div"] = merged[f"{e}_r1"] != merged[f"{e}_r2"]
-    merged["n_div"] = sum(merged[f"{e}_div"].astype(int) for e in EMOTIONS)
+    merged["n_div"] = sum(
+        merged[f"{e}_div"].astype(int) for e in EMOTIONS)
 
     N_TOTAL  = len(merged)
     N_DIVERG = int((merged["n_div"] > 0).sum())
     print(f"✓ {N_TOTAL} messages comparables")
     print(f"  dont {N_DIVERG} avec ≥1 divergence")
 
-    # Chemins par défaut
-    run1_dir = os.path.dirname(os.path.abspath(args.run1))
-    save_path = args.save_json or os.path.join(run1_dir, "supervision_progress.json")
-    export_path = args.out_xlsx or os.path.join(run1_dir, "annotations_validees.xlsx")
+    run1_dir    = os.path.dirname(os.path.abspath(args.run1))
+    save_path   = (args.save_json
+                   or os.path.join(run1_dir, "supervision_progress.json"))
+    export_path = (args.out_xlsx
+                   or os.path.join(run1_dir, "annotations_validees.xlsx"))
 
     if N_TOTAL == 0:
-        print("⚠ Aucun message comparable"); return
+        print("⚠ Aucun message comparable")
+        return
 
     try:
         supervisor = SupervisionUI(
@@ -461,10 +547,9 @@ def main():
             save_path=save_path, export_path=export_path)
         supervisor.show()
     except ImportError:
-        print("⚠ ipywidgets non disponible — exécutez depuis un notebook Jupyter/Colab.")
-        print(f"  Fichiers de sortie prévus :")
-        print(f"    Progression : {save_path}")
-        print(f"    Export XLSX : {export_path}")
+        print("⚠ ipywidgets non disponible — exécutez depuis un notebook.")
+        print(f"  Progression : {save_path}")
+        print(f"  Export XLSX : {export_path}")
 
 
 if __name__ == "__main__":
