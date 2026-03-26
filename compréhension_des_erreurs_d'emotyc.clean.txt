@@ -1,0 +1,185 @@
+
+```python
+!python annotation/scripts/emotyc_llm_judge.py \
+    --predictions outputs/homophobie/emotyc_eval/emotyc_predictions.jsonl \
+    --out_dir outputs/homophobie/emotyc_eval \
+    --pass diagnostic
+```
+```output
+✓ 103 prédictions chargées, 89 divergentes
+✓ Provider : bedrock / claude-sonnet-4-6
+  Passe 'diagnostic' terminée : 89 items en 23.8min
+  Erreurs JSON : 0/89
+
+═════════════════════════════════════════════════════════════════
+  TERMINÉ — Résultats dans : outputs/homophobie/emotyc_eval
+═════════════════════════════════════════════════════════════════
+```
+cell
+```python
+!zip -r new.zip /content/new
+```
+
+
+
+```python
+!python annotation/scripts/emotyc_report.py \
+    --eval_dir outputs/homophobie/emotyc_eval --export
+```
+```output
+
+═══════════════════════════════════════════════════════════════════════════
+  RAPPORT D'ÉVALUATION EMOTYC
+  Dossier : /content/outputs/homophobie/emotyc_eval
+═══════════════════════════════════════════════════════════════════════════
+
+  Fichiers chargés :
+    Prédictions  : 103 lignes
+    Double-blind : 39 lignes
+    Diagnostic   : 89 lignes
+
+═══════════════════════════════════════════════════════════════════════════
+  SECTION 1 — MÉTRIQUES EMOTYC vs GOLD  (103 phrases)
+═══════════════════════════════════════════════════════════════════════════
+
+  Émotion             Acc       κ      F1    Prec     Rec    FP    FN  Prev%
+  --------------------------------------------------------------------
+  Admiration        0.893   0.000   0.000   0.000   0.000    11     0   0.0%
+  Colère            0.524   0.137   0.524   0.771   0.397     8    41  66.0%
+  Culpabilité       1.000     N/A   0.000   0.000   0.000     0     0   0.0%
+  Dégoût            0.417   0.000   0.000   0.000   0.000     0    60  58.3%
+  Embarras          1.000     N/A   0.000   0.000   0.000     0     0   0.0%
+  Fierté            0.981   0.000   0.000   0.000   0.000     0     2   1.9%
+  Jalousie          1.000     N/A   0.000   0.000   0.000     0     0   0.0%
+  Joie              0.922   0.186   0.200   1.000   0.111     0     8   8.7%
+  Peur              1.000     N/A   0.000   0.000   0.000     0     0   0.0%
+  Surprise          0.961  -0.015   0.000   0.000   0.000     1     3   2.9%
+  Tristesse         0.961  -0.015   0.000   0.000   0.000     3     1   1.0%
+  --------------------------------------------------------------------
+  Macro-F1      : 0.0658
+  Micro-F1      : 0.2887
+  Exact Match   : 0.1359 (14/103)
+  Lignes diverg.: 89/103 (86.4%)
+
+═══════════════════════════════════════════════════════════════════════════
+  SECTION 2 — PASSE DOUBLE-BLIND  (32/39 réponses valides)
+═══════════════════════════════════════════════════════════════════════════
+
+  Verdicts Annotateur A :
+    Correct                   :  15 (46.9%)
+    Faux négatif              :  11 (34.4%)
+    Partiellement correct     :   4 (12.5%)
+    Faux positif              :   2 (6.2%)
+
+  Verdicts Annotateur B :
+    Correct                   :  16 (50.0%)
+    Faux positif              :   8 (25.0%)
+    Faux négatif              :   7 (21.9%)
+    Partiellement correct     :   1 (3.1%)
+
+  Types d'erreurs constatées :
+    pragmatic_confusion            :  17 (53.1%)
+    seuil_limite                   :   7 (21.9%)
+    lexical_argot                  :   6 (18.8%)
+    ironie_polarity                :   1 (3.1%)
+    erreur_humain                  :   1 (3.1%)
+
+  Argot détecté : 27/32 (84.4%)
+  LLM donne raison au gold : 29/32 (90.6%)
+
+═══════════════════════════════════════════════════════════════════════════
+  SECTION 3 — PASSE DIAGNOSTIC  (89/89 réponses valides)
+═══════════════════════════════════════════════════════════════════════════
+
+  Total verdicts par émotion : 138
+
+  Distribution des types d'erreurs :
+    lexical_argot                  :  70 (50.7%)
+    pragmatic_confusion            :  37 (26.8%)
+    contexte_manquant              :  19 (13.8%)
+    seuil_limite                   :   5 (3.6%)
+    ironie_polarity                :   5 (3.6%)
+    erreur_humain                  :   2 (1.4%)
+
+  Qui a raison :
+    gold                 : 126 (91.3%)
+    indecidable          :  10 (7.2%)
+    emotyc               :   2 (1.4%)
+
+  Axes pragmatiques :
+    ressentie            :  70 (50.7%)
+    provoquee            :  45 (32.6%)
+    absent               :  23 (16.7%)
+
+  Erreurs par émotion :
+    Émotion          #Div  #Gold✓  #EMOTYC✓  #Indéc Top erreur               
+    ----------------------------------------------------------------------
+    Admiration         11      11         0       0 pragmatic_confusion      
+    Colère             49      46         0       3 lexical_argot            
+    Dégoût             60      58         0       2 lexical_argot            
+    Fierté              2       0         1       1 contexte_manquant        
+    Joie                8       4         0       4 lexical_argot            
+    Surprise            4       3         1       0 ironie_polarity          
+    Tristesse           4       4         0       0 pragmatic_confusion      
+
+  Faux positifs : 23  |  Faux négatifs : 115
+
+  ──────────────────────────────────────────────────────────────────────
+  EXEMPLES PAR TYPE D'ERREUR
+  ──────────────────────────────────────────────────────────────────────
+
+  ▸ lexical_argot (70 occurrences) :
+    [faux_negatif] Dégoût — « Alors julie t'ai dégeulasse de sortir avec une gadji bande de salopes »
+       → raison: gold | Le terme 'dégeulasse' (graphie argotique de 'dégueulasse') est le marqueur lexical central du dégoût provoqué envers Julie, mais sa graphie non-standard a vraisemblablement perturbé le tokenizer de CamemBERT, effaçant le signal émotionnel. La proba extrêmement basse (0.0210) confirme que le modèle n'a pas reconnu ce mot comme porteur de dégoût, alors que c'est précisément son sens littéral et pragmatique.
+    [faux_negatif] Dégoût — « mais tu veut quoi toi retourne avec ta gadji et assume au passant que vous ètent lesbiennes sa dégouteeee »
+       → raison: gold | Le terme 'dégouteeee' (avec allongement expressif et orthographe non standard) est le marqueur lexical central du dégoût ressenti par l'énonciateur envers l'homosexualité présumée des cibles, mais le modèle ne le reconnaît pas correctement, probablement à cause de la graphie déformée. La proba anormalement basse (0.0473) confirme un échec de tokenisation/reconnaissance lexicale.
+    [faux_negatif] Dégoût — « mais grave bande de lesbiennes vous degoutée aaaaah »
+       → raison: gold | Le verbe 'dégoutée' est orthographié sans accent et avec accord féminin non standard, ce qui a probablement perturbé le tokenizer de CamemBERT ; de plus, la forme 'aaaaah' (interjection de répulsion allongée) est un marqueur argotique fort du dégoût ressenti que le modèle n'a pas su capturer, d'où une probabilité anormalement basse (0.0352) pour l'émotion pourtant lexicalement explicite.
+
+  ▸ pragmatic_confusion (37 occurrences) :
+    [faux_positif] Admiration — « allo mme est homophobe »
+       → raison: gold | Le modèle confond vraisemblablement la structure syntaxique 'allo mme est [X]' avec un énoncé laudatif ou admiratif, alors qu'il s'agit d'une dénonciation accusatrice (la maîtresse est homophobe). Aucune admiration n'est ressentie, provoquée ou thématisée dans ce message.
+    [faux_positif] Tristesse — « mais tu veut quoi toi retourne avec ta gadji et assume au passant que vous ètent lesbiennes sa dégouteeee »
+       → raison: gold | Le modèle confond vraisemblablement la charge émotionnelle négative intense du message (attaque homophobe, injonctions agressives) avec de la tristesse, alors que l'émotion dominante est le dégoût/colère. Il s'agit d'une confusion entre valence négative générale et tristesse spécifique.
+    [faux_positif] Colère — « mais grave bande de lesbiennes vous degoutée aaaaah »
+       → raison: gold | Le message exprime principalement du dégoût homophobe et non de la colère : l'énonciateur ne manifeste pas d'agression colérique mais une répulsion ostensiblement performative ('aaaaah', 'degoutée'). Le modèle confond probablement l'agressivité syntaxique du message avec de la colère, alors que l'affect dominant est le dégoût provoqué/exprimé.
+
+  ▸ contexte_manquant (19 occurrences) :
+    [faux_negatif] Colère — « allo mme est homophobe »
+       → raison: gold | La colère de l'énonciateur est lisible dans le contexte global (dénonciation d'une figure d'autorité homophobe au sein d'un échange agressif), mais la phrase isolée 'allo mme est homophobe' est syntaxiquement neutre et ne contient aucun marqueur lexical ou prosodique de colère exploitable par le modèle sans contexte.
+    [faux_negatif] Colère — «  on est pas ensemble déjà puis même si c'était le cas,  ça ne te regarde pas et je vois pas en quoi ça te concerne »
+       → raison: gold | La phrase est une réponse défensive et assertive à une attaque homophobe (contexte précédent), et la colère ressentie est encodée pragmatiquement dans le refus catégorique et la délimitation de territoire ('ça ne te regarde pas') — marqueurs de colère contrôlée que le modèle, sans le contexte d'agression, ne peut détecter. La proba à 0.0000 indique une défaillance totale du modèle, probablement incapable de lire la colère dans un registre neutre-assertif sans signal lexical explicite de colère.
+    [faux_negatif] Colère — « ça se fait pas en plus de prendre en photos »
+       → raison: gold | La phrase 'ça se fait pas en plus de prendre en photos' exprime une indignation morale (colère normative) face à un acte jugé inacceptable — photographier quelqu'un sans consentement — ce qui est un marqueur clair de colère ressentie. Le modèle, avec une probabilité à 0.0000, échoue totalement à capter cette charge émotionnelle, probablement parce que la construction impersonnelle et elliptique ('ça se fait pas') masque le sujet émotionnel et nécessite le contexte pour être interprétée comme une réaction indignée.
+
+  ▸ seuil_limite (5 occurrences) :
+    [faux_negatif] Colère — « mais tu veut quoi toi retourne avec ta gadji et assume au passant que vous ètent lesbiennes sa dégouteeee »
+       → raison: gold | La phrase est une attaque agressive ('mais tu veut quoi toi', injonction 'retourne', dénonciation publique) qui exprime une colère manifeste de l'énonciateur. La proba de 0.2278 est très proche du seuil de 0.2822, ce qui explique le faux négatif par un effet de seuil.
+    [faux_negatif] Colère — « grave abuser vous me degoutez »
+       → raison: gold | La proba de 0.2688 est extrêmement proche du seuil de 0.2822 (écart de 0.0134), ce qui en fait un cas limite pur. L'expression 'grave abuser vous me' traduit pourtant une colère franche et directe, amplifiée par le contexte d'insulte ('grosse crasseuse') et la défense véhémente dans le message suivant.
+    [faux_negatif] Dégoût — « bref venais on les vire de la classe c'est grosse crasseuse »
+       → raison: gold | L'insulte 'grosse crasseuse' est un marqueur lexical de dégoût provoqué envers la cible (connotation de saleté/répulsion physique), mais la proba de 0.0724 reste très en dessous du seuil de 0.1927, indiquant que le modèle sous-pondère fortement ce signal pourtant explicite. La colère dominante (0.7618) a vraisemblablement capté l'essentiel du signal émotionnel, écrasant le dégoût co-présent dans l'énoncé.
+
+  ▸ ironie_polarity (5 occurrences) :
+    [faux_positif] Surprise — «  tu m'étonnes que vous l'avez vue,  c'est vous qu'il l'avez prises connasses »
+       → raison: gold | L'expression 'tu m'étonnes' est ici un marqueur d'ironie figée en argot adolescent signifiant exactement le contraire de la surprise : 'évidemment / bien sûr que si'. Le modèle a interprété littéralement le verbe 'étonner' comme déclencheur de Surprise, sans détecter la négation sémantique portée par cette locution ironique conventionnalisée.
+    [faux_negatif] Colère — « tu sais dire d'autres choses à part ça ? »
+       → raison: gold | La phrase est une question rhétorique ironique exprimant une colère contenue face à l'insulte du message précédent ('ftg grosse salope') : l'énonciateur ne demande pas réellement une information, il signifie son mépris et son agacement. Le modèle, incapable de décoder la valence émotionnelle négative encodée dans cette forme interrogative indirecte, produit une probabilité nulle, révélant un échec total à traiter l'ironie pragmatique.
+    [faux_positif] Admiration — « taimes les filles »
+       → raison: gold | La phrase 'taimes les filles' est une insinuation homophobe sarcastique dans un contexte de harcèlement ('bande de crasseuse'), non une admiration sincère. Le modèle a interprété la surface lexicale du verbe 'aimer' comme un marqueur d'admiration, ignorant totalement la polarité négative et l'usage offensif du contexte.
+
+  ▸ erreur_humain (2 occurrences) :
+    [faux_negatif] Surprise — « c'est quoi le rapport entre être gouine et être une pute ? »
+       → raison: emotyc | La question rhétorique 'c'est quoi le rapport' exprime avant tout de l'indignation/colère, pas de la surprise au sens émotionnel du terme — l'énonciateur ne découvre rien, il conteste un amalgame qu'il juge absurde. Annoter Surprise ici semble être une confusion entre la forme interrogative et l'émotion de surprise, ce que le modèle évite à juste titre.
+    [faux_negatif] Fierté — « allez-y dégagez nous vous allez faire quoi ? »
+       → raison: emotyc | La phrase est un ordre agressif de départ ('dégagez') assorti d'un défi ('vous allez faire quoi ?'), ce qui relève clairement de la Colère, non de la Fierté. L'annotation gold=1 pour Fierté semble être une erreur d'annotation humaine : aucun marqueur lexical, prosodique ou pragmatique ne signale une fierté ressentie ou provoquée dans cet énoncé.
+
+✓ CSV exporté : /content/outputs/homophobie/emotyc_eval/emotyc_eval_summary.csv
+✓ CSV verdicts : /content/outputs/homophobie/emotyc_eval/emotyc_verdicts_detail.csv
+✓ Figures sauvegardées dans /content/outputs/homophobie/emotyc_eval/
+
+
+```python
+!zip -r outputs2.zip /content/outputs
+```
+
