@@ -523,13 +523,31 @@ def main():
                 if g != p:
                     div_type = "faux_positif" if p == 1 else "faux_negatif"
                     divergences.append({
-                        "emotion": emo,
+                        "dimension": "emotion",
+                        "label": emo,
                         "gold": g,
                         "pred": p,
                         "proba": round(float(emotion_probs[i, j]), 6),
                         "seuil": round(float(threshold_array[j]), 6),
                         "type_divergence": div_type,
                     })
+
+            # Identifier les divergences (modes)
+            if gold_mode_matrix is not None:
+                for j, mode in enumerate(MODE_ORDER):
+                    g = int(gold_mode_matrix[i, j])
+                    p = int(pred_mode_matrix[i, j])
+                    if g != p:
+                        div_type = "faux_positif" if p == 1 else "faux_negatif"
+                        divergences.append({
+                            "dimension": "mode",
+                            "label": mode,
+                            "gold": g,
+                            "pred": p,
+                            "proba": round(float(mode_probs[i, j]), 6),
+                            "seuil": 0.5,
+                            "type_divergence": div_type,
+                        })
 
             if divergences:
                 n_divergent += 1
@@ -568,9 +586,18 @@ def main():
                     mode: int(pred_mode_matrix[i, j])
                     for j, mode in enumerate(MODE_ORDER)
                 },
+                "golds_mode": (
+                    {mode: int(gold_mode_matrix[i, j])
+                     for j, mode in enumerate(MODE_ORDER)}
+                    if gold_mode_matrix is not None else None
+                ),
                 # Caractère émotionnel
                 "proba_emo": round(float(emo_probs[i]), 6),
                 "pred_emo": int(pred_emo_array[i]),
+                "gold_emo": (
+                    int(gold_emo_matrix[i, 0])
+                    if gold_emo_matrix is not None else None
+                ),
                 # Type (Base/Complexe)
                 "probas_type": {
                     t: round(float(type_probs[i, j]), 6)
@@ -580,6 +607,11 @@ def main():
                     t: int(pred_type_matrix[i, j])
                     for j, t in enumerate(type_names)
                 },
+                "golds_type": (
+                    {t: int(gold_type_matrix[i, j])
+                     for j, t in enumerate(type_names)}
+                    if gold_type_matrix is not None else None
+                ),
                 # Divergences
                 "n_divergences": len(divergences),
                 "divergences": divergences,
