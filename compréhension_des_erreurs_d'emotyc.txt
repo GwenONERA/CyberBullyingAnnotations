@@ -173,13 +173,3 @@ cell
        → raison: emotyc | La question rhétorique 'c'est quoi le rapport' exprime avant tout de l'indignation/colère, pas de la surprise au sens émotionnel du terme — l'énonciateur ne découvre rien, il conteste un amalgame qu'il juge absurde. Annoter Surprise ici semble être une confusion entre la forme interrogative et l'émotion de surprise, ce que le modèle évite à juste titre.
     [faux_negatif] Fierté — « allez-y dégagez nous vous allez faire quoi ? »
        → raison: emotyc | La phrase est un ordre agressif de départ ('dégagez') assorti d'un défi ('vous allez faire quoi ?'), ce qui relève clairement de la Colère, non de la Fierté. L'annotation gold=1 pour Fierté semble être une erreur d'annotation humaine : aucun marqueur lexical, prosodique ou pragmatique ne signale une fierté ressentie ou provoquée dans cet énoncé.
-
-✓ CSV exporté : /content/outputs/homophobie/emotyc_eval/emotyc_eval_summary.csv
-✓ CSV verdicts : /content/outputs/homophobie/emotyc_eval/emotyc_verdicts_detail.csv
-✓ Figures sauvegardées dans /content/outputs/homophobie/emotyc_eval/
-
-
-```python
-!zip -r outputs2.zip /content/outputs
-```
-
