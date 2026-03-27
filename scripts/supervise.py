@@ -1,20 +1,10 @@
 #!/usr/bin/env python3
 """
 Interface de supervision manuelle des annotations (widget notebook).
-
-Usage depuis un notebook :
-    %run scripts/supervise.py \
-        --run1 outputs/homophobie/run001.jsonl \
-        --run2 outputs/homophobie/run002.jsonl \
-        --xlsx data/homophobie_scenario_julie.xlsx
-
-Ou en CLI (affiche les stats sans widget) :
-    python scripts/supervise.py \
-        --run1 outputs/homophobie/run001.jsonl \
-        --run2 outputs/homophobie/run002.jsonl
+Version avec gestion complète des spans SitEmo.
 """
 
-import argparse, json, os, sys
+import argparse, json, os, sys, copy
 from datetime import datetime, timezone
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -59,7 +49,8 @@ def load_run(path):
 
             if rec["json_ok"] and isinstance(pj, dict):
                 if "sitemo_units" in pj:
-                    emo = _aggregate_sitemo_to_emotions(pj.get("sitemo_units", []))
+                    emo = _aggregate_sitemo_to_emotions(
+                        pj.get("sitemo_units", []))
                     for e in EMOTIONS:
                         row[e] = int(emo.get(e, 0))
                     row["confidence"] = None
@@ -68,7 +59,8 @@ def load_run(path):
                     emo = pj.get("emotions", {})
                     for e in EMOTIONS:
                         row[e] = int(emo.get(e, 0))
-                    row["confidence"] = pj.get("metadata", {}).get("confidence")
+                    row["confidence"] = pj.get("metadata", {}).get(
+                        "confidence")
                     row["rationale"]  = pj.get("rationale_short")
                 else:
                     for e in EMOTIONS:
@@ -85,7 +77,8 @@ def load_run(path):
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Supervision manuelle des annotations")
+    p = argparse.ArgumentParser(
+        description="Supervision manuelle des annotations")
     p.add_argument("--run1", required=True, help="JSONL du run 1")
     p.add_argument("--run2", required=True, help="JSONL du run 2")
     p.add_argument("--xlsx", default=None, help="XLSX original")
@@ -94,6 +87,76 @@ def parse_args():
     p.add_argument("--out_xlsx", default=None,
                    help="Fichier d'export XLSX (défaut: auto)")
     return p.parse_args()
+
+
+# ═══ RÉSOLUTION DES SPANS ══════════════════════════════════════════════════
+
+def _get_units_for_emotion(parsed_json, emotion):
+    """Extrait les unités SitEmo correspondant à une émotion donnée."""
+    if not isinstance(parsed_json, dict):
+        return []
+    units = parsed_json.get("sitemo_units", [])
+    if not isinstance(units, list):
+        return []
+    result = []
+    for u in units:
+        if not isinstance(u, dict):
+            continue
+        if u.get("categorie") == emotion or u.get("categorie2") == emotion:
+            result.append(u)
+    return result
+
+
+def build_final_spans(row, decisions_for_row, emotions=EMOTIONS):
+    """
+    Construit la liste finale de sitemo_units à partir de la décision
+    du réviseur sur les labels et des spans des deux runs.
+
+    Logique :
+      - émotion validée à 1 → garder les spans
+      - émotion validée à 0 → pas de spans
+      - source : le run qui avait 1 (préférence run1 si les deux)
+    """
+    pj_r1 = row.get("parsed_json_r1", {})
+    pj_r2 = row.get("parsed_json_r2", {})
+    if not isinstance(pj_r1, dict):
+        pj_r1 = {}
+    if not isinstance(pj_r2, dict):
+        pj_r2 = {}
+
+    final_units = []
+
+    for e in emotions:
+        decided = int(decisions_for_row.get(e, 0))
+        if decided == 0:
+            continue  # émotion rejetée → pas de span
+
+        r1v = int(row.get(f"{e}_r1", 0)) if pd.notna(row.get(f"{e}_r1")) else 0
+        r2v = int(row.get(f"{e}_r2", 0)) if pd.notna(row.get(f"{e}_r2")) else 0
+
+        # Choisir la source des spans
+        source_key = decisions_for_row.get(f"_span_source_{e}", "auto")
+
+        if source_key == "run2":
+            units = _get_units_for_emotion(pj_r2, e)
+        elif source_key == "run1":
+            units = _get_units_for_emotion(pj_r1, e)
+        else:  # "auto"
+            if r1v == 1 and r2v == 1:
+                # Les deux ont détecté → préférence run1
+                units = _get_units_for_emotion(pj_r1, e)
+            elif r1v == 1:
+                units = _get_units_for_emotion(pj_r1, e)
+            elif r2v == 1:
+                units = _get_units_for_emotion(pj_r2, e)
+            else:
+                # Le réviseur a mis 1 alors que les deux runs avaient 0
+                # → pas de span source disponible
+                units = []
+
+        final_units.extend(copy.deepcopy(units))
+
+    return final_units
 
 
 # ═══ CLASSE DE SUPERVISION ═════════════════════════════════════════════════
@@ -125,24 +188,29 @@ class SupervisionUI:
 
         # ── Widgets ──
         self.tog_filter = W.ToggleButtons(
-            options=[("Tous les messages", False), ("Divergences seules", True)],
+            options=[("Tous les messages", False),
+                     ("Divergences seules", True)],
             value=True, style={"button_width": "160px"})
         self.tog_filter.observe(self._on_filter, names="value")
 
-        self.bar_progress = W.IntProgress(min=0, max=1, bar_style="info",
-                                          layout=W.Layout(width="250px"))
+        self.bar_progress = W.IntProgress(
+            min=0, max=1, bar_style="info",
+            layout=W.Layout(width="250px"))
         self.lbl_progress = W.HTML()
 
-        self.btn_prev = W.Button(description="◄ Préc.", layout=W.Layout(width="85px"))
-        self.btn_next = W.Button(description="Suiv. ►", layout=W.Layout(width="85px"))
-        self.btn_skip = W.Button(description="→ Non-revu suivant",
-                                 button_style="warning",
-                                 layout=W.Layout(width="170px"))
+        self.btn_prev = W.Button(
+            description="◄ Préc.", layout=W.Layout(width="85px"))
+        self.btn_next = W.Button(
+            description="Suiv. ►", layout=W.Layout(width="85px"))
+        self.btn_skip = W.Button(
+            description="→ Non-revu suivant",
+            button_style="warning", layout=W.Layout(width="170px"))
         self.lbl_pos  = W.HTML()
         self.inp_jump = W.BoundedIntText(
             value=0, min=0, max=max(1, int(df["idx"].max())),
             description="idx :", layout=W.Layout(width="160px"))
-        self.btn_jump = W.Button(description="Go", layout=W.Layout(width="45px"))
+        self.btn_jump = W.Button(
+            description="Go", layout=W.Layout(width="45px"))
 
         self.btn_prev.on_click(lambda _: self._go(-1))
         self.btn_next.on_click(lambda _: self._go(1))
@@ -159,16 +227,39 @@ class SupervisionUI:
         self.vbox_emos = W.VBox(emo_children)
 
         self.html_sitemo = W.HTML()
+
+        # ── Nouveau : zone de résumé des spans retenus ──
+        self.html_spans_final = W.HTML()
+        self.span_source_toggles = {}
+        span_source_children = [W.HTML(
+            "<b style='font-size:13px'>Source des spans par émotion "
+            "(si validée à 1) :</b>")]
+        for e in EMOTIONS:
+            tog = W.ToggleButtons(
+                options=[("Auto", "auto"), ("Run1", "run1"), ("Run2", "run2")],
+                value="auto",
+                style={"button_width": "55px"},
+                layout=W.Layout(width="230px"))
+            lbl = W.HTML(
+                f"<span style='width:100px;display:inline-block;"
+                f"font-size:12px'>{e}</span>",
+                layout=W.Layout(width="110px"))
+            self.span_source_toggles[e] = tog
+            span_source_children.append(W.HBox([lbl, tog]))
+        self.vbox_span_sources = W.VBox(span_source_children)
+
         self.txt_notes = W.Textarea(
             placeholder="Notes du réviseur (optionnel)…",
             layout=W.Layout(width="100%", height="50px"))
 
-        self.btn_valid  = W.Button(description="✓ Valider et suivant",
-                                   button_style="success",
-                                   layout=W.Layout(width="200px", height="38px"))
-        self.btn_export = W.Button(description="💾 Exporter XLSX",
-                                   button_style="info",
-                                   layout=W.Layout(width="200px", height="38px"))
+        self.btn_valid  = W.Button(
+            description="✓ Valider et suivant",
+            button_style="success",
+            layout=W.Layout(width="200px", height="38px"))
+        self.btn_export = W.Button(
+            description="💾 Exporter XLSX",
+            button_style="info",
+            layout=W.Layout(width="200px", height="38px"))
         self.lbl_status = W.HTML()
 
         self.btn_valid.on_click(self._on_validate)
@@ -185,7 +276,16 @@ class SupervisionUI:
             W.HTML("<hr style='margin:4px 0'>"),
             self.vbox_emos,
             W.HTML("<hr style='margin:4px 0'>"),
-            self.html_sitemo, self.txt_notes,
+            W.HTML("<h4 style='margin:6px 0 2px'>Détail des spans "
+                   "(runs 1 & 2)</h4>"),
+            self.html_sitemo,
+            W.HTML("<hr style='margin:4px 0'>"),
+            W.HTML("<h4 style='margin:6px 0 2px'>Choix de la source "
+                   "des spans</h4>"),
+            self.vbox_span_sources,
+            self.html_spans_final,
+            W.HTML("<hr style='margin:4px 0'>"),
+            self.txt_notes,
             W.HBox([self.btn_valid, self.btn_export]),
             self.lbl_status,
         ])
@@ -193,7 +293,7 @@ class SupervisionUI:
 
     def _header_row(self):
         W = self._W
-        S = "display:inline-block;font-weight:bold;text-align:center"
+        S = ("display:inline-block;font-weight:bold;text-align:center")
         return W.HBox([
             W.HTML(f"<span style='{S};width:18px'></span>"),
             W.HTML(f"<span style='{S};width:120px'>Émotion</span>"),
@@ -208,17 +308,20 @@ class SupervisionUI:
         label  = W.HTML(layout=W.Layout(width="120px"))
         r1     = W.HTML(layout=W.Layout(width="55px"))
         r2     = W.HTML(layout=W.Layout(width="55px"))
-        toggle = W.ToggleButtons(options=[("0", 0), ("1", 1)], value=0,
-                                 style={"button_width": "45px"},
-                                 layout=W.Layout(width="160px"))
+        toggle = W.ToggleButtons(
+            options=[("0", 0), ("1", 1)], value=0,
+            style={"button_width": "45px"},
+            layout=W.Layout(width="160px"))
         parts = dict(flag=flag, label=label, r1=r1, r2=r2, toggle=toggle)
         return W.HBox([flag, label, r1, r2, toggle]), parts
 
     @staticmethod
     def _badge(val, color):
-        return (f"<span style='display:inline-block;width:28px;text-align:center;"
-                f"background:{color};color:#fff;padding:2px 6px;border-radius:4px;"
-                f"font-weight:bold;font-size:13px'>{val}</span>")
+        return (
+            f"<span style='display:inline-block;width:28px;"
+            f"text-align:center;background:{color};color:#fff;"
+            f"padding:2px 6px;border-radius:4px;font-weight:bold;"
+            f"font-size:13px'>{val}</span>")
 
     def _load(self):
         if os.path.exists(self.save_path):
@@ -233,8 +336,9 @@ class SupervisionUI:
 
     def _update_filter(self):
         if self.only_diverg:
-            self.filtered = [i for i in range(self.n)
-                             if self.df.iloc[i]["n_div"] > 0]
+            self.filtered = [
+                i for i in range(self.n)
+                if self.df.iloc[i]["n_div"] > 0]
         else:
             self.filtered = list(range(self.n))
         if not self.filtered:
@@ -285,7 +389,8 @@ class SupervisionUI:
     def _render(self):
         ri = self._ri()
         if ri is None:
-            self.html_msg.value = "<h3 style='color:#888'>Aucun message.</h3>"
+            self.html_msg.value = (
+                "<h3 style='color:#888'>Aucun message.</h3>")
             return
 
         row = self.df.iloc[ri]
@@ -296,7 +401,8 @@ class SupervisionUI:
         n_rev = sum(1 for fi in self.filtered if fi in self.decisions)
         self.bar_progress.max = max(1, len(self.filtered))
         self.bar_progress.value = n_rev
-        pct = n_rev / len(self.filtered) * 100 if self.filtered else 0
+        pct = (n_rev / len(self.filtered) * 100
+               if self.filtered else 0)
         self.lbl_progress.value = (
             f"<b>{n_rev}/{len(self.filtered)}</b> revus ({pct:.0f}%)")
 
@@ -307,28 +413,36 @@ class SupervisionUI:
         name = str(row.get("NAME", "?"))
         role = str(row.get("ROLE", "?"))
         div_badge = (
-            f"<span style='background:#e74c3c;color:#fff;padding:3px 10px;"
-            f"border-radius:5px;font-weight:bold'>⚠ {n_div} divergence(s)</span>"
+            f"<span style='background:#e74c3c;color:#fff;"
+            f"padding:3px 10px;border-radius:5px;font-weight:bold'>"
+            f"⚠ {n_div} divergence(s)</span>"
             if n_div > 0 else
-            "<span style='background:#27ae60;color:#fff;padding:3px 10px;"
-            "border-radius:5px'>✓ Accord complet</span>")
+            "<span style='background:#27ae60;color:#fff;"
+            "padding:3px 10px;border-radius:5px'>"
+            "✓ Accord complet</span>")
         self.html_msg.value = (
-            f"<div style='background:#f8f9fa;padding:12px;border-radius:8px;"
-            f"border:1px solid #dee2e6'><div style='margin-bottom:8px'>"
-            f"<b style='font-size:15px'>{name}</b> | Rôle: <code>{role}</code>"
-            f" | {div_badge}</div>"
+            f"<div style='background:#f8f9fa;padding:12px;"
+            f"border-radius:8px;border:1px solid #dee2e6'>"
+            f"<div style='margin-bottom:8px'>"
+            f"<b style='font-size:15px'>{name}</b> | "
+            f"Rôle: <code>{role}</code> | {div_badge}</div>"
             f"<div style='font-size:14px;padding:10px;background:#fff;"
-            f"border-radius:6px;border-left:5px solid #3498db;line-height:1.6'>"
-            f"{text or '<i style=\"color:#999\">(vide)</i>'}</div></div>")
+            f"border-radius:6px;border-left:5px solid #3498db;"
+            f"line-height:1.6'>"
+            f"{text or '<i style=\"color:#999\">(vide)</i>'}"
+            f"</div></div>")
 
         prev_dec = self.decisions.get(ri, {})
         for e in EMOTIONS:
             wd = self.emo_parts[e]
-            r1v = int(row[f"{e}_r1"]) if pd.notna(row[f"{e}_r1"]) else 0
-            r2v = int(row[f"{e}_r2"]) if pd.notna(row[f"{e}_r2"]) else 0
+            r1v = (int(row[f"{e}_r1"])
+                   if pd.notna(row[f"{e}_r1"]) else 0)
+            r2v = (int(row[f"{e}_r2"])
+                   if pd.notna(row[f"{e}_r2"]) else 0)
             div = r1v != r2v
-            wd["flag"].value = ("⚠️" if div
-                                else "<span style='color:#27ae60'>✓</span>")
+            wd["flag"].value = (
+                "⚠️" if div
+                else "<span style='color:#27ae60'>✓</span>")
             bg = "#fff3cd" if div else "transparent"
             fw = "bold" if div else "normal"
             wd["label"].value = (
@@ -338,31 +452,39 @@ class SupervisionUI:
             c2 = "#e67e22" if div else "#bdc3c7"
             wd["r1"].value = self._badge(r1v, c)
             wd["r2"].value = self._badge(r2v, c2)
-            wd["toggle"].value = int(prev_dec[e]) if e in prev_dec else r1v
+            wd["toggle"].value = (
+                int(prev_dec[e]) if e in prev_dec else r1v)
 
-        # ── Affichage SitEmo ─────────────────────────────────────────
+        # Restaurer les choix de source de spans
+        for e in EMOTIONS:
+            saved_src = prev_dec.get(f"_span_source_{e}", "auto")
+            if saved_src in ("auto", "run1", "run2"):
+                self.span_source_toggles[e].value = saved_src
+
+        # ── Affichage SitEmo comparatif ──────────────────────────────
         def _format_sitemo(content, run_label):
-            html = (f"<div style='margin-bottom:8px'><b>{run_label} :</b>"
-                    f"<ul style='margin-top:4px;padding-left:20px'>")
+            html = (
+                f"<div style='margin-bottom:8px'>"
+                f"<b>{run_label} :</b>"
+                f"<ul style='margin-top:4px;padding-left:20px'>")
             try:
-                # ── Si on reçoit une str, tenter json.loads ──
                 if isinstance(content, str):
                     try:
                         content = json.loads(content)
                     except (json.JSONDecodeError, ValueError):
-                        html += ("<li><i>Impossible de parser le JSON "
-                                 "brut.</i></li>")
+                        html += ("<li><i>Impossible de parser "
+                                 "le JSON brut.</i></li>")
                         return html + "</ul></div>"
-
                 if not isinstance(content, dict) or not content:
-                    html += ("<li><i>Aucune donnée valide "
-                             "(JSON malformé ou vide).</i></li>")
-                elif "emotions" in content and "sitemo_units" not in content:
-                    html += ("<li><i>Ancien format binaire détecté "
+                    html += ("<li><i>Aucune donnée valide.</i></li>")
+                elif ("emotions" in content
+                      and "sitemo_units" not in content):
+                    html += ("<li><i>Ancien format binaire "
                              "(pas de spans SitEmo).</i></li>")
                     if "rationale_short" in content:
-                        html += (f"<li><b>Rationale :</b> "
-                                 f"<i>{content['rationale_short']}</i></li>")
+                        html += (
+                            f"<li><b>Rationale :</b> "
+                            f"<i>{content['rationale_short']}</i></li>")
                 else:
                     units = content.get("sitemo_units", [])
                     if not isinstance(units, list):
@@ -378,12 +500,17 @@ class SupervisionUI:
                         span   = unit.get("span_text",     "N/A")
                         mode   = unit.get("mode",          "N/A")
                         cat    = unit.get("categorie",     "N/A")
+                        cat2   = unit.get("categorie2",    "")
                         justif = unit.get("justification", "N/A")
+                        cat_display = cat
+                        if cat2:
+                            cat_display += f" / {cat2}"
                         html += (
                             f"<li style='margin-bottom:6px'>"
-                            f"<b>Span:</b> <code style='background:#e9ecef;"
-                            f"padding:2px 4px'>{span}</code><br>"
-                            f"<b>Catégorie:</b> {cat} | "
+                            f"<b>Span:</b> <code style='"
+                            f"background:#e9ecef;padding:2px 4px'>"
+                            f"{span}</code><br>"
+                            f"<b>Catégorie:</b> {cat_display} | "
                             f"<b>Mode:</b> {mode}<br>"
                             f"<b>Justification:</b> "
                             f"<i>{justif}</i></li>")
@@ -392,7 +519,6 @@ class SupervisionUI:
             html += "</ul></div>"
             return html
 
-        # ── Récupérer les dicts parsed_json (pas les raw_text) ──
         pj_r1 = row.get("parsed_json_r1", {})
         pj_r2 = row.get("parsed_json_r2", {})
         if not isinstance(pj_r1, dict):
@@ -404,31 +530,41 @@ class SupervisionUI:
         sitemo_r2 = _format_sitemo(pj_r2, "Output Run 2")
 
         self.html_sitemo.value = (
-            f"<div style='font-size:13px;background:#f8f9fa;padding:12px;"
-            f"border-radius:6px;border:1px solid #dee2e6'>"
+            f"<div style='font-size:13px;background:#f8f9fa;"
+            f"padding:12px;border-radius:6px;"
+            f"border:1px solid #dee2e6'>"
             f"<div style='display:flex;gap:20px;'>"
             f"<div style='flex:1'>{sitemo_r1}</div>"
             f"<div style='flex:1'>{sitemo_r2}</div>"
             f"</div></div>")
+
         self.txt_notes.value = prev_dec.get("notes", "")
 
     def _on_validate(self, _):
         ri = self._ri()
         if ri is None:
             return
+        row = self.df.iloc[ri]
         decision = {}
         for e in EMOTIONS:
             decision[e] = int(self.emo_parts[e]["toggle"].value)
+            decision[f"_span_source_{e}"] = \
+                self.span_source_toggles[e].value
         decision["notes"] = self.txt_notes.value
         decision["reviewed_at"] = datetime.now(timezone.utc).isoformat()
+
+        # Résoudre et stocker les spans finaux
+        decision["final_spans"] = build_final_spans(
+            row, decision, EMOTIONS)
+
         self.decisions[ri] = decision
         self._save()
-        orig_idx = int(self.df.iloc[ri]["idx"])
+        orig_idx = int(row["idx"])
         found = self._advance_unreviewed()
         if found:
             self.lbl_status.value = (
                 f"<span style='color:#27ae60'>✓ idx={orig_idx} "
-                f"sauvegardé — prochain non-revu affiché</span>")
+                f"sauvegardé (labels + spans) — prochain non-revu</span>")
         else:
             self.lbl_status.value = (
                 f"<span style='color:#27ae60;font-weight:bold'>"
@@ -450,51 +586,96 @@ class SupervisionUI:
             row = self.df.iloc[i]
             orig_idx = int(row["idx"])
             out = {"idx": orig_idx}
-            if self.df_orig is not None and orig_idx < len(self.df_orig):
+
+            if (self.df_orig is not None
+                    and orig_idx < len(self.df_orig)):
                 for col in self.df_orig.columns:
                     out[col] = self.df_orig.iloc[orig_idx][col]
+
             if i in self.decisions:
                 dec = self.decisions[i]
                 for e in EMOTIONS:
                     out[e] = dec.get(e)
                 out["reviewed"] = True
                 out["reviewer_notes"] = dec.get("notes", "")
+
+                # ── Spans validés ──
+                final_spans = dec.get("final_spans", [])
+                out["n_spans"] = len(final_spans)
+                out["spans_json"] = json.dumps(
+                    final_spans, ensure_ascii=False)
+
+                # Colonnes à plat pour les 5 premiers spans
+                for si, span in enumerate(final_spans[:5]):
+                    if isinstance(span, dict):
+                        out[f"span{si+1}_text"] = span.get(
+                            "span_text", "")
+                        out[f"span{si+1}_cat"]  = span.get(
+                            "categorie", "")
+                        out[f"span{si+1}_mode"] = span.get(
+                            "mode", "")
             else:
                 for e in EMOTIONS:
                     r1 = row.get(f"{e}_r1")
                     r2 = row.get(f"{e}_r2")
-                    out[e] = (int(r1)
-                              if (pd.notna(r1) and pd.notna(r2)
-                                  and int(r1) == int(r2))
-                              else None)
+                    out[e] = (
+                        int(r1)
+                        if (pd.notna(r1) and pd.notna(r2)
+                            and int(r1) == int(r2))
+                        else None)
                 out["reviewed"] = False
                 out["reviewer_notes"] = ""
+
+                # Spans auto (run1 par défaut) pour les non-revus
+                auto_dec = {e: out.get(e, 0) or 0 for e in EMOTIONS}
+                auto_spans = build_final_spans(row, auto_dec, EMOTIONS)
+                out["n_spans"] = len(auto_spans)
+                out["spans_json"] = json.dumps(
+                    auto_spans, ensure_ascii=False)
+
             for e in EMOTIONS:
-                out[f"{e}_run1"] = (int(row[f"{e}_r1"])
-                                    if pd.notna(row[f"{e}_r1"]) else None)
-                out[f"{e}_run2"] = (int(row[f"{e}_r2"])
-                                    if pd.notna(row[f"{e}_r2"]) else None)
+                out[f"{e}_run1"] = (
+                    int(row[f"{e}_r1"])
+                    if pd.notna(row[f"{e}_r1"]) else None)
+                out[f"{e}_run2"] = (
+                    int(row[f"{e}_r2"])
+                    if pd.notna(row[f"{e}_r2"]) else None)
             out["n_divergences"] = int(row["n_div"])
             rows_out.append(out)
 
         df_out = pd.DataFrame(rows_out)
+
+        # Ordre des colonnes
         lead = [c for c in ["idx"] if c in df_out.columns]
         if self.df_orig is not None:
             lead += [c for c in self.df_orig.columns
                      if c in df_out.columns and c not in lead]
-        ordered = (lead + EMOTIONS
-                   + ["reviewed", "reviewer_notes", "n_divergences"])
-        ordered += [f"{e}_{s}" for e in EMOTIONS for s in ("run1", "run2")]
+        ordered = (
+            lead + EMOTIONS
+            + ["reviewed", "reviewer_notes",
+               "n_spans", "spans_json"]
+            + [f"span{i}_text" for i in range(1, 6)]
+            + [f"span{i}_cat"  for i in range(1, 6)]
+            + [f"span{i}_mode" for i in range(1, 6)]
+            + ["n_divergences"]
+            + [f"{e}_{s}" for e in EMOTIONS for s in ("run1", "run2")]
+        )
         rest = [c for c in df_out.columns if c not in ordered]
-        df_out = df_out[[c for c in ordered + rest if c in df_out.columns]]
-        df_out.to_excel(self.export_path, index=False, engine="openpyxl")
+        df_out = df_out[
+            [c for c in ordered + rest if c in df_out.columns]]
+
+        df_out.to_excel(
+            self.export_path, index=False, engine="openpyxl")
 
         n_rev = len(self.decisions)
+        n_with_spans = sum(
+            1 for d in self.decisions.values()
+            if d.get("final_spans"))
         self.lbl_status.value = (
-            f"<div style='color:#155724;background:#d4edda;padding:10px;"
-            f"border-radius:6px;font-weight:bold'>"
-            f"✓ Exporté → <code>{self.export_path}</code> "
-            f"({n_rev} revus)</div>")
+            f"<div style='color:#155724;background:#d4edda;"
+            f"padding:10px;border-radius:6px;font-weight:bold'>"
+            f"✓ Exporté → <code>{self.export_path}</code><br>"
+            f"   {n_rev} revus, {n_with_spans} avec spans</div>")
 
     def show(self):
         self._display(self.ui)
@@ -508,10 +689,12 @@ def main():
     df_r1 = load_run(args.run1)
     df_r2 = load_run(args.run2)
 
-    merged = pd.merge(df_r1, df_r2, on="idx", how="inner",
-                      suffixes=("_r1", "_r2"))
-    merged = merged[merged["json_ok_r1"] & merged["json_ok_r2"]]\
-        .reset_index(drop=True)
+    merged = pd.merge(
+        df_r1, df_r2, on="idx", how="inner",
+        suffixes=("_r1", "_r2"))
+    merged = merged[
+        merged["json_ok_r1"] & merged["json_ok_r2"]
+    ].reset_index(drop=True)
 
     df_orig = None
     if args.xlsx and os.path.exists(args.xlsx):
@@ -531,9 +714,9 @@ def main():
     print(f"✓ {N_TOTAL} messages comparables")
     print(f"  dont {N_DIVERG} avec ≥1 divergence")
 
-    run1_dir    = os.path.dirname(os.path.abspath(args.run1))
-    save_path   = (args.save_json
-                   or os.path.join(run1_dir, "supervision_progress.json"))
+    run1_dir = os.path.dirname(os.path.abspath(args.run1))
+    save_path = (args.save_json
+                 or os.path.join(run1_dir, "supervision_progress.json"))
     export_path = (args.out_xlsx
                    or os.path.join(run1_dir, "annotations_validees.xlsx"))
 
@@ -547,7 +730,8 @@ def main():
             save_path=save_path, export_path=export_path)
         supervisor.show()
     except ImportError:
-        print("⚠ ipywidgets non disponible — exécutez depuis un notebook.")
+        print("⚠ ipywidgets non disponible — "
+              "exécutez depuis un notebook Jupyter/Colab.")
         print(f"  Progression : {save_path}")
         print(f"  Export XLSX : {export_path}")
 
