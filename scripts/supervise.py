@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """
-Interface de supervision manuelle des annotations (widget notebook).
-Version avec gestion complète des spans SitEmo.
+Interface de supervision via Argilla (HuggingFace Space).
+Un record Argilla par désaccord de span inter-annotateurs.
 """
 
-import argparse, json, os, sys, copy
-from datetime import datetime, timezone
+import argparse, json, os, sys, copy, webbrowser
+from difflib import SequenceMatcher
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(REPO_ROOT, "src"))
 
-import numpy as np
 import pandas as pd
+import argilla as rg
 
 EMOTIONS = [
     "Colère", "Dégoût", "Joie", "Peur", "Surprise", "Tristesse",
@@ -20,6 +20,8 @@ EMOTIONS = [
 
 _CAT_NORMALIZE = {e: e for e in EMOTIONS}
 
+
+# ═══ DATA LOADING ══════════════════════════════════════════════════════════
 
 def _aggregate_sitemo_to_emotions(sitemo_units):
     emo_dict = {e: 0 for e in EMOTIONS}
@@ -46,6 +48,13 @@ def load_run(path):
                    "raw_text": rec.get("raw_text", "{}")}
             pj = rec.get("parsed_json")
             row["parsed_json"] = pj if isinstance(pj, dict) else {}
+
+            meta = rec.get("meta", {})
+            if not isinstance(meta, dict):
+                meta = {}
+            row["target_name"] = meta.get("target_name", "")
+            row["target_role"] = meta.get("target_role", "")
+            row["thematique"] = meta.get("thematique", "")
 
             if rec["json_ok"] and isinstance(pj, dict):
                 if "sitemo_units" in pj:
@@ -76,47 +85,51 @@ def load_run(path):
     return pd.DataFrame(rows)
 
 
-def parse_args():
-    p = argparse.ArgumentParser(
-        description="Supervision manuelle des annotations")
-    p.add_argument("--run1", required=True, help="JSONL du run 1")
-    p.add_argument("--run2", required=True, help="JSONL du run 2")
-    p.add_argument("--xlsx", default=None, help="XLSX original")
-    p.add_argument("--save_json", default=None,
-                   help="Fichier de sauvegarde progression (défaut: auto)")
-    p.add_argument("--out_xlsx", default=None,
-                   help="Fichier d'export XLSX (défaut: auto)")
-    return p.parse_args()
+# ═══ SPAN MATCHING ═════════════════════════════════════════════════════════
+
+def _match_spans(units_r1, units_r2, threshold=0.85):
+    """Match spans between R1 and R2 by text similarity.
+    Returns (matched_pairs, unmatched_r1, unmatched_r2)."""
+    matched = []
+    used_r2 = set()
+    unmatched_r1_list = []
+
+    for u1 in units_r1:
+        s1 = u1.get("span_text", "").strip().lower()
+        best_j, best_ratio = -1, 0.0
+        for j, u2 in enumerate(units_r2):
+            if j in used_r2:
+                continue
+            s2 = u2.get("span_text", "").strip().lower()
+            if s1 == s2:
+                ratio = 1.0
+            elif s1 in s2 or s2 in s1:
+                ratio = 0.95
+            else:
+                ratio = SequenceMatcher(None, s1, s2).ratio()
+            if ratio > best_ratio:
+                best_ratio = ratio
+                best_j = j
+        if best_ratio >= threshold:
+            matched.append((u1, units_r2[best_j]))
+            used_r2.add(best_j)
+        else:
+            unmatched_r1_list.append(u1)
+
+    unmatched_r2_list = [u for j, u in enumerate(units_r2)
+                         if j not in used_r2]
+    return matched, unmatched_r1_list, unmatched_r2_list
 
 
-# ═══ RÉSOLUTION DES SPANS ══════════════════════════════════════════════════
-
-def _get_units_for_emotion(parsed_json, emotion):
-    """Extrait les unités SitEmo correspondant à une émotion donnée."""
-    if not isinstance(parsed_json, dict):
-        return []
-    units = parsed_json.get("sitemo_units", [])
-    if not isinstance(units, list):
-        return []
-    result = []
-    for u in units:
-        if not isinstance(u, dict):
-            continue
-        if u.get("categorie") == emotion or u.get("categorie2") == emotion:
-            result.append(u)
-    return result
+def _has_annotation_diff(u1, u2):
+    """True if two matched spans differ in category or mode."""
+    return (u1.get("categorie") != u2.get("categorie") or
+            u1.get("categorie2") != u2.get("categorie2") or
+            u1.get("mode") != u2.get("mode"))
 
 
-def build_final_spans(row, decisions_for_row, emotions=EMOTIONS):
-    """
-    Construit la liste finale de sitemo_units à partir de la décision
-    du réviseur sur les labels et des spans des deux runs.
-
-    Logique :
-      - émotion validée à 1 → garder les spans
-      - émotion validée à 0 → pas de spans
-      - source : le run qui avait 1 (préférence run1 si les deux)
-    """
+def compute_disagreements(row):
+    """Return list of disagreement dicts for a merged row."""
     pj_r1 = row.get("parsed_json_r1", {})
     pj_r2 = row.get("parsed_json_r2", {})
     if not isinstance(pj_r1, dict):
@@ -124,567 +137,474 @@ def build_final_spans(row, decisions_for_row, emotions=EMOTIONS):
     if not isinstance(pj_r2, dict):
         pj_r2 = {}
 
-    final_units = []
+    units_r1 = pj_r1.get("sitemo_units", [])
+    units_r2 = pj_r2.get("sitemo_units", [])
+    if not isinstance(units_r1, list):
+        units_r1 = []
+    if not isinstance(units_r2, list):
+        units_r2 = []
 
-    for e in emotions:
-        decided = int(decisions_for_row.get(e, 0))
-        if decided == 0:
-            continue  # émotion rejetée → pas de span
+    matched, unmatched_r1, unmatched_r2 = _match_spans(
+        units_r1, units_r2)
 
-        r1v = int(row.get(f"{e}_r1", 0)) if pd.notna(row.get(f"{e}_r1")) else 0
-        r2v = int(row.get(f"{e}_r2", 0)) if pd.notna(row.get(f"{e}_r2")) else 0
+    disagreements = []
+    for u1, u2 in matched:
+        if _has_annotation_diff(u1, u2):
+            disagreements.append({
+                "type": "mismatch",
+                "span_text": u1.get("span_text", ""),
+                "r1": u1, "r2": u2,
+            })
 
-        # Choisir la source des spans
-        source_key = decisions_for_row.get(f"_span_source_{e}", "auto")
+    for u1 in unmatched_r1:
+        disagreements.append({
+            "type": "only_r1",
+            "span_text": u1.get("span_text", ""),
+            "r1": u1, "r2": None,
+        })
 
-        if source_key == "run2":
-            units = _get_units_for_emotion(pj_r2, e)
-        elif source_key == "run1":
-            units = _get_units_for_emotion(pj_r1, e)
-        else:  # "auto"
-            if r1v == 1 and r2v == 1:
-                # Les deux ont détecté → préférence run1
-                units = _get_units_for_emotion(pj_r1, e)
-            elif r1v == 1:
-                units = _get_units_for_emotion(pj_r1, e)
-            elif r2v == 1:
-                units = _get_units_for_emotion(pj_r2, e)
+    for u2 in unmatched_r2:
+        disagreements.append({
+            "type": "only_r2",
+            "span_text": u2.get("span_text", ""),
+            "r1": None, "r2": u2,
+        })
+
+    return disagreements
+
+
+def _rebuild_message_spans(row, disagreements, decisions_map,
+                           corrections_map=None):
+    """Rebuild final sitemo_units from agreed spans + decisions."""
+    if corrections_map is None:
+        corrections_map = {}
+    pj_r1 = row.get("parsed_json_r1", {})
+    pj_r2 = row.get("parsed_json_r2", {})
+    if not isinstance(pj_r1, dict):
+        pj_r1 = {}
+    if not isinstance(pj_r2, dict):
+        pj_r2 = {}
+
+    units_r1 = pj_r1.get("sitemo_units", [])
+    units_r2 = pj_r2.get("sitemo_units", [])
+    if not isinstance(units_r1, list):
+        units_r1 = []
+    if not isinstance(units_r2, list):
+        units_r2 = []
+
+    matched, _, _ = _match_spans(units_r1, units_r2)
+
+    final = []
+    # Agreed matched spans → keep R1's version
+    for u1, u2 in matched:
+        if not _has_annotation_diff(u1, u2):
+            final.append(copy.deepcopy(u1))
+
+    # Apply disagreement decisions
+    for i, dis in enumerate(disagreements):
+        decision = decisions_map.get(i)
+        corr = corrections_map.get(i)
+        if decision == "Autre" and corr:
+            # Build corrected unit from the span text
+            base = dis.get("r1") or dis.get("r2") or {}
+            for cat in corr.get("categories", []):
+                unit = copy.deepcopy(base)
+                unit["categorie"] = cat
+                unit["categorie2"] = ""
+                if corr.get("mode"):
+                    unit["mode"] = corr["mode"]
+                final.append(unit)
+        elif decision == "R1" and dis.get("r1"):
+            final.append(copy.deepcopy(dis["r1"]))
+        elif decision == "R2" and dis.get("r2"):
+            final.append(copy.deepcopy(dis["r2"]))
+        elif decision == "Aucun":
+            pass  # discard
+        elif decision is None:
+            # No response → default: keep R1, skip only_r2
+            if dis["type"] in ("mismatch", "only_r1"):
+                if dis.get("r1"):
+                    final.append(copy.deepcopy(dis["r1"]))
+
+    return final
+
+
+# ═══ FORMATTING ════════════════════════════════════════════════════════════
+
+MODES = ["Désignée", "Comportementale", "Suggérée", "Montrée"]
+
+
+def _unit_md_block(label, unit):
+    """Format one unit as a markdown block."""
+    if unit is None:
+        return f"**{label} :** *(non détecté)*"
+    cat = unit.get("categorie", "—")
+    cat2 = unit.get("categorie2", "")
+    if cat2:
+        cat = f"{cat} / {cat2}"
+    mode = unit.get("mode", "—")
+    justif = unit.get("justification", "—")
+    return (
+        f"**{label}** — Catégorie : **{cat}** · "
+        f"Mode : **{mode}**  \n"
+        f"&nbsp;&nbsp;&nbsp;&nbsp;*{justif}*"
+    )
+
+
+def format_disagreement_md(dis):
+    """Format a disagreement as compact markdown."""
+    span = dis["span_text"]
+    lines = [
+        f"**Span :** `{span}`",
+        "",
+        _unit_md_block("R1", dis["r1"]),
+        "",
+        "---",
+        "",
+        _unit_md_block("R2", dis["r2"]),
+    ]
+    return "\n".join(lines)
+
+
+# ═══ ARGILLA CONNECTION ════════════════════════════════════════════════════
+
+def connect_argilla(api_url, api_key, proxy=None):
+    kwargs = {}
+    if proxy:
+        kwargs["proxy"] = proxy
+    return rg.Argilla(api_url=api_url, api_key=api_key, **kwargs)
+
+
+# ═══ PUSH TO ARGILLA ══════════════════════════════════════════════════════
+
+def push_to_argilla(merged, df_orig, args):
+    client = connect_argilla(args.api_url, args.api_key, args.proxy)
+    dataset_name = args.dataset
+    workspace = args.workspace
+
+    settings = rg.Settings(
+        fields=[
+            rg.TextField(name="message", title="Message",
+                         use_markdown=True),
+            rg.TextField(name="desaccord",
+                         title="Désaccord inter-annotateurs",
+                         use_markdown=True),
+            rg.TextField(name="contexte",
+                         title="Contexte (locuteur)",
+                         use_markdown=True, required=False),
+        ],
+        questions=[
+            rg.LabelQuestion(
+                name="decision",
+                title="Quelle annotation est correcte ?",
+                description=(
+                    "R1 / R2 = garder cette annotation, "
+                    "Aucun = rejeter le span, "
+                    "Autre = corriger manuellement"),
+                labels=["R1", "R2", "Aucun", "Autre"],
+                required=True,
+            ),
+            rg.MultiLabelQuestion(
+                name="correction_categories",
+                title="Correction : catégories",
+                description=(
+                    "Si 'Autre' : sélectionnez la ou les "
+                    "catégories correctes pour ce span."),
+                labels=EMOTIONS,
+                required=False,
+            ),
+            rg.LabelQuestion(
+                name="correction_mode",
+                title="Correction : mode",
+                description=(
+                    "Si 'Autre' : sélectionnez le mode "
+                    "correct pour ce span."),
+                labels=MODES,
+                required=False,
+            ),
+            rg.TextQuestion(
+                name="notes",
+                title="Notes",
+                required=False,
+            ),
+        ],
+        metadata=[
+            rg.IntegerMetadataProperty(name="idx",
+                                       title="Index message"),
+            rg.IntegerMetadataProperty(
+                name="n_disagreements",
+                title="Nb désaccords (message)"),
+            rg.TermsMetadataProperty(
+                name="type_desaccord",
+                title="Type de désaccord"),
+        ],
+    )
+
+    # Check existing dataset
+    existing = None
+    try:
+        existing = client.datasets(name=dataset_name,
+                                   workspace=workspace)
+    except Exception:
+        pass
+
+    if existing is not None:
+        try:
+            _ = existing.id
+            if args.force:
+                print(f"⚠ Suppression du dataset "
+                      f"'{dataset_name}'...")
+                existing.delete()
             else:
-                # Le réviseur a mis 1 alors que les deux runs avaient 0
-                # → pas de span source disponible
-                units = []
-
-        final_units.extend(copy.deepcopy(units))
-
-    return final_units
-
-
-# ═══ CLASSE DE SUPERVISION ═════════════════════════════════════════════════
-
-class SupervisionUI:
-
-    def __init__(self, df, df_orig, save_path, export_path):
-        import ipywidgets as W
-        from IPython.display import display
-        self._W = W
-        self._display = display
-
-        self.df          = df
-        self.df_orig     = df_orig
-        self.save_path   = save_path
-        self.export_path = export_path
-        self.n           = len(df)
-        self.pos         = 0
-        self.decisions   = self._load()
-
-        self.only_diverg = True
-        self.filtered    = []
-        self._update_filter()
-
-        for i, fi in enumerate(self.filtered):
-            if fi not in self.decisions:
-                self.pos = i
-                break
-
-        # ── Widgets ──
-        self.tog_filter = W.ToggleButtons(
-            options=[("Tous les messages", False),
-                     ("Divergences seules", True)],
-            value=True, style={"button_width": "160px"})
-        self.tog_filter.observe(self._on_filter, names="value")
-
-        self.bar_progress = W.IntProgress(
-            min=0, max=1, bar_style="info",
-            layout=W.Layout(width="250px"))
-        self.lbl_progress = W.HTML()
-
-        self.btn_prev = W.Button(
-            description="◄ Préc.", layout=W.Layout(width="85px"))
-        self.btn_next = W.Button(
-            description="Suiv. ►", layout=W.Layout(width="85px"))
-        self.btn_skip = W.Button(
-            description="→ Non-revu suivant",
-            button_style="warning", layout=W.Layout(width="170px"))
-        self.lbl_pos  = W.HTML()
-        self.inp_jump = W.BoundedIntText(
-            value=0, min=0, max=max(1, int(df["idx"].max())),
-            description="idx :", layout=W.Layout(width="160px"))
-        self.btn_jump = W.Button(
-            description="Go", layout=W.Layout(width="45px"))
-
-        self.btn_prev.on_click(lambda _: self._go(-1))
-        self.btn_next.on_click(lambda _: self._go(1))
-        self.btn_skip.on_click(self._go_unreviewed)
-        self.btn_jump.on_click(self._go_jump)
-
-        self.html_msg = W.HTML()
-        self.emo_parts = {}
-        emo_children = [self._header_row()]
-        for e in EMOTIONS:
-            row_w, parts = self._emotion_row(e)
-            self.emo_parts[e] = parts
-            emo_children.append(row_w)
-        self.vbox_emos = W.VBox(emo_children)
-
-        self.html_sitemo = W.HTML()
-
-        # ── Nouveau : zone de résumé des spans retenus ──
-        self.html_spans_final = W.HTML()
-        self.span_source_toggles = {}
-        span_source_children = [W.HTML(
-            "<b style='font-size:13px'>Source des spans par émotion "
-            "(si validée à 1) :</b>")]
-        for e in EMOTIONS:
-            tog = W.ToggleButtons(
-                options=[("Auto", "auto"), ("Run1", "run1"), ("Run2", "run2")],
-                value="auto",
-                style={"button_width": "55px"},
-                layout=W.Layout(width="230px"))
-            lbl = W.HTML(
-                f"<span style='width:100px;display:inline-block;"
-                f"font-size:12px'>{e}</span>",
-                layout=W.Layout(width="110px"))
-            self.span_source_toggles[e] = tog
-            span_source_children.append(W.HBox([lbl, tog]))
-        self.vbox_span_sources = W.VBox(span_source_children)
-
-        self.txt_notes = W.Textarea(
-            placeholder="Notes du réviseur (optionnel)…",
-            layout=W.Layout(width="100%", height="50px"))
-
-        self.btn_valid  = W.Button(
-            description="✓ Valider et suivant",
-            button_style="success",
-            layout=W.Layout(width="200px", height="38px"))
-        self.btn_export = W.Button(
-            description="💾 Exporter XLSX",
-            button_style="info",
-            layout=W.Layout(width="200px", height="38px"))
-        self.lbl_status = W.HTML()
-
-        self.btn_valid.on_click(self._on_validate)
-        self.btn_export.on_click(self._on_export)
-
-        self.ui = W.VBox([
-            self.tog_filter,
-            W.HBox([self.bar_progress, self.lbl_progress]),
-            W.HBox([self.btn_prev, self.btn_next, self.btn_skip,
-                     W.HTML("&nbsp;"), self.lbl_pos]),
-            W.HBox([self.inp_jump, self.btn_jump]),
-            W.HTML("<hr style='margin:4px 0'>"),
-            self.html_msg,
-            W.HTML("<hr style='margin:4px 0'>"),
-            self.vbox_emos,
-            W.HTML("<hr style='margin:4px 0'>"),
-            W.HTML("<h4 style='margin:6px 0 2px'>Détail des spans "
-                   "(runs 1 & 2)</h4>"),
-            self.html_sitemo,
-            W.HTML("<hr style='margin:4px 0'>"),
-            W.HTML("<h4 style='margin:6px 0 2px'>Choix de la source "
-                   "des spans</h4>"),
-            self.vbox_span_sources,
-            self.html_spans_final,
-            W.HTML("<hr style='margin:4px 0'>"),
-            self.txt_notes,
-            W.HBox([self.btn_valid, self.btn_export]),
-            self.lbl_status,
-        ])
-        self._render()
-
-    def _header_row(self):
-        W = self._W
-        S = ("display:inline-block;font-weight:bold;text-align:center")
-        return W.HBox([
-            W.HTML(f"<span style='{S};width:18px'></span>"),
-            W.HTML(f"<span style='{S};width:120px'>Émotion</span>"),
-            W.HTML(f"<span style='{S};width:55px'>R1</span>"),
-            W.HTML(f"<span style='{S};width:55px'>R2</span>"),
-            W.HTML(f"<span style='{S};width:160px'>Votre choix</span>"),
-        ])
-
-    def _emotion_row(self, emotion):
-        W = self._W
-        flag   = W.HTML(layout=W.Layout(width="18px"))
-        label  = W.HTML(layout=W.Layout(width="120px"))
-        r1     = W.HTML(layout=W.Layout(width="55px"))
-        r2     = W.HTML(layout=W.Layout(width="55px"))
-        toggle = W.ToggleButtons(
-            options=[("0", 0), ("1", 1)], value=0,
-            style={"button_width": "45px"},
-            layout=W.Layout(width="160px"))
-        parts = dict(flag=flag, label=label, r1=r1, r2=r2, toggle=toggle)
-        return W.HBox([flag, label, r1, r2, toggle]), parts
-
-    @staticmethod
-    def _badge(val, color):
-        return (
-            f"<span style='display:inline-block;width:28px;"
-            f"text-align:center;background:{color};color:#fff;"
-            f"padding:2px 6px;border-radius:4px;font-weight:bold;"
-            f"font-size:13px'>{val}</span>")
-
-    def _load(self):
-        if os.path.exists(self.save_path):
-            with open(self.save_path, "r", encoding="utf-8") as f:
-                return {int(k): v for k, v in json.load(f).items()}
-        return {}
-
-    def _save(self):
-        with open(self.save_path, "w", encoding="utf-8") as f:
-            json.dump({str(k): v for k, v in self.decisions.items()},
-                      f, ensure_ascii=False, indent=2)
-
-    def _update_filter(self):
-        if self.only_diverg:
-            self.filtered = [
-                i for i in range(self.n)
-                if self.df.iloc[i]["n_div"] > 0]
-        else:
-            self.filtered = list(range(self.n))
-        if not self.filtered:
-            self.pos = 0
-        else:
-            self.pos = max(0, min(self.pos, len(self.filtered) - 1))
-
-    def _on_filter(self, change):
-        self.only_diverg = change["new"]
-        self._update_filter()
-        self.pos = 0
-        self.lbl_status.value = ""
-        self._render()
-
-    def _ri(self):
-        return self.filtered[self.pos] if self.filtered else None
-
-    def _go(self, delta):
-        new = self.pos + delta
-        if 0 <= new < len(self.filtered):
-            self.pos = new
-            self.lbl_status.value = ""
-            self._render()
-
-    def _go_unreviewed(self, _):
-        for offset in range(1, len(self.filtered) + 1):
-            p = (self.pos + offset) % len(self.filtered)
-            if self.filtered[p] not in self.decisions:
-                self.pos = p
-                self.lbl_status.value = ""
-                self._render()
+                print(f"⚠ Le dataset '{dataset_name}' existe.")
+                print("  --force pour recréer, "
+                      "--mode export pour exporter.")
                 return
-        self.lbl_status.value = (
-            "<span style='color:#27ae60;font-weight:bold'>"
-            "✓ Tous les messages revus !</span>")
+        except Exception:
+            pass
 
-    def _go_jump(self, _):
-        target = self.inp_jump.value
-        best, best_d = 0, float("inf")
-        for i, fi in enumerate(self.filtered):
-            d = abs(int(self.df.iloc[fi]["idx"]) - target)
-            if d < best_d:
-                best, best_d = i, d
-        self.pos = best
-        self.lbl_status.value = ""
-        self._render()
+    dataset = rg.Dataset(
+        name=dataset_name,
+        workspace=workspace,
+        settings=settings,
+        client=client,
+    )
+    dataset.create()
+    print(f"✓ Dataset '{dataset_name}' créé")
 
-    def _render(self):
-        ri = self._ri()
-        if ri is None:
-            self.html_msg.value = (
-                "<h3 style='color:#888'>Aucun message.</h3>")
-            return
-
-        row = self.df.iloc[ri]
-        is_rev = ri in self.decisions
-        n_div = int(row["n_div"])
+    # Build records — one per span disagreement
+    records = []
+    n_msg_with_dis = 0
+    for i in range(len(merged)):
+        row = merged.iloc[i]
         orig_idx = int(row["idx"])
 
-        n_rev = sum(1 for fi in self.filtered if fi in self.decisions)
-        self.bar_progress.max = max(1, len(self.filtered))
-        self.bar_progress.value = n_rev
-        pct = (n_rev / len(self.filtered) * 100
-               if self.filtered else 0)
-        self.lbl_progress.value = (
-            f"<b>{n_rev}/{len(self.filtered)}</b> revus ({pct:.0f}%)")
+        disagreements = compute_disagreements(row)
+        if not disagreements:
+            continue
 
-        tag = "✅ revu" if is_rev else "🔶 à revoir"
-        self.lbl_pos.value = f"<b>idx={orig_idx}</b> | {tag}"
-
+        n_msg_with_dis += 1
         text = str(row.get("TEXT", ""))
-        name = str(row.get("NAME", "?"))
-        role = str(row.get("ROLE", "?"))
-        div_badge = (
-            f"<span style='background:#e74c3c;color:#fff;"
-            f"padding:3px 10px;border-radius:5px;font-weight:bold'>"
-            f"⚠ {n_div} divergence(s)</span>"
-            if n_div > 0 else
-            "<span style='background:#27ae60;color:#fff;"
-            "padding:3px 10px;border-radius:5px'>"
-            "✓ Accord complet</span>")
-        self.html_msg.value = (
-            f"<div style='background:#f8f9fa;padding:12px;"
-            f"border-radius:8px;border:1px solid #dee2e6'>"
-            f"<div style='margin-bottom:8px'>"
-            f"<b style='font-size:15px'>{name}</b> | "
-            f"Rôle: <code>{role}</code> | {div_badge}</div>"
-            f"<div style='font-size:14px;padding:10px;background:#fff;"
-            f"border-radius:6px;border-left:5px solid #3498db;"
-            f"line-height:1.6'>"
-            f"{text or '<i style=\"color:#999\">(vide)</i>'}"
-            f"</div></div>")
+        if not text or text == "nan":
+            text = str(row.get("raw_text_r1", ""))
+        name = str(row.get("NAME",
+                           row.get("target_name_r1", "")))
+        role = str(row.get("ROLE",
+                           row.get("target_role_r1", "")))
 
-        prev_dec = self.decisions.get(ri, {})
-        for e in EMOTIONS:
-            wd = self.emo_parts[e]
-            r1v = (int(row[f"{e}_r1"])
-                   if pd.notna(row[f"{e}_r1"]) else 0)
-            r2v = (int(row[f"{e}_r2"])
-                   if pd.notna(row[f"{e}_r2"]) else 0)
-            div = r1v != r2v
-            wd["flag"].value = (
-                "⚠️" if div
-                else "<span style='color:#27ae60'>✓</span>")
-            bg = "#fff3cd" if div else "transparent"
-            fw = "bold" if div else "normal"
-            wd["label"].value = (
-                f"<span style='background:{bg};padding:3px 6px;"
-                f"border-radius:4px;font-weight:{fw}'>{e}</span>")
-            c  = "#3498db" if div else "#bdc3c7"
-            c2 = "#e67e22" if div else "#bdc3c7"
-            wd["r1"].value = self._badge(r1v, c)
-            wd["r2"].value = self._badge(r2v, c2)
-            wd["toggle"].value = (
-                int(prev_dec[e]) if e in prev_dec else r1v)
+        message_md = f"> {text}" if text else "> *(vide)*"
+        contexte_md = (
+            f"**Locuteur :** {name} | **Rôle :** {role}")
 
-        # Restaurer les choix de source de spans
-        for e in EMOTIONS:
-            saved_src = prev_dec.get(f"_span_source_{e}", "auto")
-            if saved_src in ("auto", "run1", "run2"):
-                self.span_source_toggles[e].value = saved_src
+        for di, dis in enumerate(disagreements):
+            desaccord_md = format_disagreement_md(dis)
 
-        # ── Affichage SitEmo comparatif ──────────────────────────────
-        def _format_sitemo(content, run_label):
-            html = (
-                f"<div style='margin-bottom:8px'>"
-                f"<b>{run_label} :</b>"
-                f"<ul style='margin-top:4px;padding-left:20px'>")
-            try:
-                if isinstance(content, str):
-                    try:
-                        content = json.loads(content)
-                    except (json.JSONDecodeError, ValueError):
-                        html += ("<li><i>Impossible de parser "
-                                 "le JSON brut.</i></li>")
-                        return html + "</ul></div>"
-                if not isinstance(content, dict) or not content:
-                    html += ("<li><i>Aucune donnée valide.</i></li>")
-                elif ("emotions" in content
-                      and "sitemo_units" not in content):
-                    html += ("<li><i>Ancien format binaire "
-                             "(pas de spans SitEmo).</i></li>")
-                    if "rationale_short" in content:
-                        html += (
-                            f"<li><b>Rationale :</b> "
-                            f"<i>{content['rationale_short']}</i></li>")
-                else:
-                    units = content.get("sitemo_units", [])
-                    if not isinstance(units, list):
-                        units = []
-                    if not units:
-                        html += ("<li><i>Aucune émotion/span "
-                                 "détecté.</i></li>")
-                    for unit in units:
-                        if not isinstance(unit, dict):
-                            html += (f"<li><i>Unité mal formée : "
-                                     f"{unit}</i></li>")
-                            continue
-                        span   = unit.get("span_text",     "N/A")
-                        mode   = unit.get("mode",          "N/A")
-                        cat    = unit.get("categorie",     "N/A")
-                        cat2   = unit.get("categorie2",    "")
-                        justif = unit.get("justification", "N/A")
-                        cat_display = cat
-                        if cat2:
-                            cat_display += f" / {cat2}"
-                        html += (
-                            f"<li style='margin-bottom:6px'>"
-                            f"<b>Span:</b> <code style='"
-                            f"background:#e9ecef;padding:2px 4px'>"
-                            f"{span}</code><br>"
-                            f"<b>Catégorie:</b> {cat_display} | "
-                            f"<b>Mode:</b> {mode}<br>"
-                            f"<b>Justification:</b> "
-                            f"<i>{justif}</i></li>")
-            except Exception as e:
-                html += f"<li><i>Erreur d'affichage ({e})</i></li>"
-            html += "</ul></div>"
-            return html
+            record = rg.Record(
+                id=f"{orig_idx}_d{di}",
+                fields={
+                    "message": message_md,
+                    "desaccord": desaccord_md,
+                    "contexte": contexte_md,
+                },
+                metadata={
+                    "idx": orig_idx,
+                    "n_disagreements": len(disagreements),
+                    "type_desaccord": dis["type"],
+                },
+            )
+            records.append(record)
 
-        pj_r1 = row.get("parsed_json_r1", {})
-        pj_r2 = row.get("parsed_json_r2", {})
-        if not isinstance(pj_r1, dict):
-            pj_r1 = {}
-        if not isinstance(pj_r2, dict):
-            pj_r2 = {}
+    dataset.records.log(records)
+    print(f"✓ {len(records)} désaccords poussés "
+          f"({n_msg_with_dis} messages concernés)")
 
-        sitemo_r1 = _format_sitemo(pj_r1, "Output Run 1")
-        sitemo_r2 = _format_sitemo(pj_r2, "Output Run 2")
+    url = args.api_url
+    webbrowser.open(url)
+    print(f"Interface Argilla : {url}")
 
-        self.html_sitemo.value = (
-            f"<div style='font-size:13px;background:#f8f9fa;"
-            f"padding:12px;border-radius:6px;"
-            f"border:1px solid #dee2e6'>"
-            f"<div style='display:flex;gap:20px;'>"
-            f"<div style='flex:1'>{sitemo_r1}</div>"
-            f"<div style='flex:1'>{sitemo_r2}</div>"
-            f"</div></div>")
 
-        self.txt_notes.value = prev_dec.get("notes", "")
+# ═══ EXPORT FROM ARGILLA ══════════════════════════════════════════════════
 
-    def _on_validate(self, _):
-        ri = self._ri()
-        if ri is None:
-            return
-        row = self.df.iloc[ri]
-        decision = {}
-        for e in EMOTIONS:
-            decision[e] = int(self.emo_parts[e]["toggle"].value)
-            decision[f"_span_source_{e}"] = \
-                self.span_source_toggles[e].value
-        decision["notes"] = self.txt_notes.value
-        decision["reviewed_at"] = datetime.now(timezone.utc).isoformat()
+def export_from_argilla(merged, df_orig, args):
+    client = connect_argilla(args.api_url, args.api_key, args.proxy)
 
-        # Résoudre et stocker les spans finaux
-        decision["final_spans"] = build_final_spans(
-            row, decision, EMOTIONS)
+    try:
+        dataset = client.datasets(name=args.dataset,
+                                  workspace=args.workspace)
+        _ = dataset.id
+    except Exception:
+        print(f"⚠ Dataset '{args.dataset}' non trouvé.")
+        return
 
-        self.decisions[ri] = decision
-        self._save()
+    # Collect decisions: (orig_idx, disagreement_index) → decision
+    record_decisions = {}
+    for record in dataset.records:
+        rid = record.id
+        if not rid or "_d" not in rid:
+            continue
+        parts = rid.rsplit("_d", 1)
+        try:
+            orig_idx = int(parts[0])
+            di = int(parts[1])
+        except (ValueError, IndexError):
+            continue
+
+        decision = None
+        correction = None
+        if record.responses:
+            user_resp = record.responses[-1]
+            cats, mode = None, None
+            for resp in user_resp.responses:
+                if resp.question_name == "decision":
+                    decision = resp.value
+                elif resp.question_name == "correction_categories":
+                    cats = resp.value
+                elif resp.question_name == "correction_mode":
+                    mode = resp.value
+            if decision == "Autre" and cats:
+                correction = {"categories": cats,
+                              "mode": mode}
+        record_decisions[(orig_idx, di)] = (
+            decision, correction)
+
+    # Build export rows
+    rows_out = []
+    for i in range(len(merged)):
+        row = merged.iloc[i]
         orig_idx = int(row["idx"])
-        found = self._advance_unreviewed()
-        if found:
-            self.lbl_status.value = (
-                f"<span style='color:#27ae60'>✓ idx={orig_idx} "
-                f"sauvegardé (labels + spans) — prochain non-revu</span>")
-        else:
-            self.lbl_status.value = (
-                f"<span style='color:#27ae60;font-weight:bold'>"
-                f"✓ idx={orig_idx} — Tous revus !</span>")
+        out = {"idx": orig_idx}
 
-    def _advance_unreviewed(self):
-        for offset in range(1, len(self.filtered) + 1):
-            p = (self.pos + offset) % len(self.filtered)
-            if self.filtered[p] not in self.decisions:
-                self.pos = p
-                self._render()
-                return True
-        self._render()
-        return False
+        if df_orig is not None and orig_idx < len(df_orig):
+            for col in df_orig.columns:
+                out[col] = df_orig.iloc[orig_idx][col]
 
-    def _on_export(self, _):
-        rows_out = []
-        for i in range(self.n):
-            row = self.df.iloc[i]
-            orig_idx = int(row["idx"])
-            out = {"idx": orig_idx}
-
-            if (self.df_orig is not None
-                    and orig_idx < len(self.df_orig)):
-                for col in self.df_orig.columns:
-                    out[col] = self.df_orig.iloc[orig_idx][col]
-
-            if i in self.decisions:
-                dec = self.decisions[i]
-                for e in EMOTIONS:
-                    out[e] = dec.get(e)
-                out["reviewed"] = True
-                out["reviewer_notes"] = dec.get("notes", "")
-
-                # ── Spans validés ──
-                final_spans = dec.get("final_spans", [])
-                out["n_spans"] = len(final_spans)
-                out["spans_json"] = json.dumps(
-                    final_spans, ensure_ascii=False)
-
-                # Colonnes à plat pour les 5 premiers spans
-                for si, span in enumerate(final_spans[:5]):
-                    if isinstance(span, dict):
-                        out[f"span{si+1}_text"] = span.get(
-                            "span_text", "")
-                        out[f"span{si+1}_cat"]  = span.get(
-                            "categorie", "")
-                        out[f"span{si+1}_mode"] = span.get(
-                            "mode", "")
+        disagreements = compute_disagreements(row)
+        decisions_map = {}
+        has_any_response = False
+        corrections_map = {}
+        for di in range(len(disagreements)):
+            entry = record_decisions.get((orig_idx, di))
+            if entry is not None:
+                dec, corr = entry
+                if dec is not None:
+                    has_any_response = True
+                decisions_map[di] = dec
+                if corr:
+                    corrections_map[di] = corr
             else:
-                for e in EMOTIONS:
-                    r1 = row.get(f"{e}_r1")
-                    r2 = row.get(f"{e}_r2")
-                    out[e] = (
-                        int(r1)
-                        if (pd.notna(r1) and pd.notna(r2)
-                            and int(r1) == int(r2))
-                        else None)
-                out["reviewed"] = False
-                out["reviewer_notes"] = ""
+                decisions_map[di] = None
 
-                # Spans auto (run1 par défaut) pour les non-revus
-                auto_dec = {e: out.get(e, 0) or 0 for e in EMOTIONS}
-                auto_spans = build_final_spans(row, auto_dec, EMOTIONS)
-                out["n_spans"] = len(auto_spans)
-                out["spans_json"] = json.dumps(
-                    auto_spans, ensure_ascii=False)
+        final_spans = _rebuild_message_spans(
+            row, disagreements, decisions_map,
+            corrections_map)
 
-            for e in EMOTIONS:
-                out[f"{e}_run1"] = (
-                    int(row[f"{e}_r1"])
-                    if pd.notna(row[f"{e}_r1"]) else None)
-                out[f"{e}_run2"] = (
-                    int(row[f"{e}_r2"])
-                    if pd.notna(row[f"{e}_r2"]) else None)
-            out["n_divergences"] = int(row["n_div"])
-            rows_out.append(out)
+        emo_dict = _aggregate_sitemo_to_emotions(final_spans)
+        for e in EMOTIONS:
+            out[e] = emo_dict.get(e, 0)
 
-        df_out = pd.DataFrame(rows_out)
+        out["reviewed"] = (has_any_response
+                           or len(disagreements) == 0)
+        out["n_spans"] = len(final_spans)
+        out["spans_json"] = json.dumps(
+            final_spans, ensure_ascii=False)
 
-        # Ordre des colonnes
-        lead = [c for c in ["idx"] if c in df_out.columns]
-        if self.df_orig is not None:
-            lead += [c for c in self.df_orig.columns
-                     if c in df_out.columns and c not in lead]
-        ordered = (
-            lead + EMOTIONS
-            + ["reviewed", "reviewer_notes",
-               "n_spans", "spans_json"]
-            + [f"span{i}_text" for i in range(1, 6)]
-            + [f"span{i}_cat"  for i in range(1, 6)]
-            + [f"span{i}_mode" for i in range(1, 6)]
-            + ["n_divergences"]
-            + [f"{e}_{s}" for e in EMOTIONS for s in ("run1", "run2")]
-        )
-        rest = [c for c in df_out.columns if c not in ordered]
-        df_out = df_out[
-            [c for c in ordered + rest if c in df_out.columns]]
+        for si, span in enumerate(final_spans[:5]):
+            if isinstance(span, dict):
+                out[f"span{si+1}_text"] = span.get(
+                    "span_text", "")
+                out[f"span{si+1}_cat"] = span.get(
+                    "categorie", "")
+                out[f"span{si+1}_mode"] = span.get(
+                    "mode", "")
 
-        df_out.to_excel(
-            self.export_path, index=False, engine="openpyxl")
+        for e in EMOTIONS:
+            out[f"{e}_run1"] = (
+                int(row[f"{e}_r1"])
+                if pd.notna(row[f"{e}_r1"]) else None)
+            out[f"{e}_run2"] = (
+                int(row[f"{e}_r2"])
+                if pd.notna(row[f"{e}_r2"]) else None)
+        out["n_disagreements"] = len(disagreements)
+        rows_out.append(out)
 
-        n_rev = len(self.decisions)
-        n_with_spans = sum(
-            1 for d in self.decisions.values()
-            if d.get("final_spans"))
-        self.lbl_status.value = (
-            f"<div style='color:#155724;background:#d4edda;"
-            f"padding:10px;border-radius:6px;font-weight:bold'>"
-            f"✓ Exporté → <code>{self.export_path}</code><br>"
-            f"   {n_rev} revus, {n_with_spans} avec spans</div>")
+    df_out = pd.DataFrame(rows_out)
 
-    def show(self):
-        self._display(self.ui)
+    lead = [c for c in ["idx"] if c in df_out.columns]
+    if df_orig is not None:
+        lead += [c for c in df_orig.columns
+                 if c in df_out.columns and c not in lead]
+    ordered = (
+        lead + EMOTIONS
+        + ["reviewed", "n_spans", "spans_json"]
+        + [f"span{i}_text" for i in range(1, 6)]
+        + [f"span{i}_cat"  for i in range(1, 6)]
+        + [f"span{i}_mode" for i in range(1, 6)]
+        + ["n_disagreements"]
+        + [f"{e}_{s}" for e in EMOTIONS for s in ("run1", "run2")]
+    )
+    rest = [c for c in df_out.columns if c not in ordered]
+    df_out = df_out[
+        [c for c in ordered + rest if c in df_out.columns]]
+
+    export_path = args.out_xlsx or os.path.join(
+        os.path.dirname(os.path.abspath(args.run1)),
+        "annotations_validees.xlsx")
+
+    df_out.to_excel(export_path, index=False, engine="openpyxl")
+
+    n_rev = sum(1 for r in rows_out if r.get("reviewed"))
+    print(f"✓ Exporté → {export_path}")
+    print(f"  {n_rev}/{len(merged)} messages avec décision")
 
 
-# ═══ MAIN ═══════════════════════════════════════════════════════════════════
+# ═══ PARSE ARGS ════════════════════════════════════════════════════════════
+
+def parse_args():
+    p = argparse.ArgumentParser(
+        description="Supervision des annotations via Argilla")
+    p.add_argument("--run1", required=True, help="JSONL du run 1")
+    p.add_argument("--run2", required=True, help="JSONL du run 2")
+    p.add_argument("--xlsx", default=None,
+                   help="XLSX original (pour TEXT/NAME/ROLE)")
+    p.add_argument("--api_url", required=True,
+                   help="URL Argilla")
+    p.add_argument("--api_key", required=True,
+                   help="Clé API Argilla")
+    p.add_argument("--dataset", default="supervision",
+                   help="Nom du dataset (défaut: supervision)")
+    p.add_argument("--workspace", default="argilla",
+                   help="Workspace Argilla (défaut: argilla)")
+    p.add_argument("--mode", choices=["push", "export"],
+                   default="push",
+                   help="push = envoyer, export = récupérer")
+    p.add_argument("--force", action="store_true",
+                   help="Recréer le dataset s'il existe")
+    p.add_argument("--out_xlsx", default=None,
+                   help="Fichier d'export XLSX (défaut: auto)")
+    p.add_argument("--proxy", default=None,
+                   help="Proxy HTTP")
+    return p.parse_args()
+
+
+# ═══ MAIN ══════════════════════════════════════════════════════════════════
 
 def main():
     args = parse_args()
+
+    if args.proxy:
+        os.environ["HTTP_PROXY"] = args.proxy
+        os.environ["HTTPS_PROXY"] = args.proxy
+
+    # Auto-detect xlsx from run1 filename
+    if not args.xlsx:
+        base = os.path.basename(args.run1).lower()
+        for part in base.replace(".jsonl", "").split("_"):
+            candidate = os.path.join(REPO_ROOT, "data",
+                                     f"{part}.xlsx")
+            if os.path.exists(candidate):
+                args.xlsx = candidate
+                print(f"  XLSX auto-détecté : {args.xlsx}")
+                break
 
     df_r1 = load_run(args.run1)
     df_r2 = load_run(args.run2)
@@ -709,31 +629,19 @@ def main():
     merged["n_div"] = sum(
         merged[f"{e}_div"].astype(int) for e in EMOTIONS)
 
-    N_TOTAL  = len(merged)
+    N_TOTAL = len(merged)
     N_DIVERG = int((merged["n_div"] > 0).sum())
     print(f"✓ {N_TOTAL} messages comparables")
-    print(f"  dont {N_DIVERG} avec ≥1 divergence")
-
-    run1_dir = os.path.dirname(os.path.abspath(args.run1))
-    save_path = (args.save_json
-                 or os.path.join(run1_dir, "supervision_progress.json"))
-    export_path = (args.out_xlsx
-                   or os.path.join(run1_dir, "annotations_validees.xlsx"))
+    print(f"  dont {N_DIVERG} avec ≥1 divergence (émotions)")
 
     if N_TOTAL == 0:
         print("⚠ Aucun message comparable")
         return
 
-    try:
-        supervisor = SupervisionUI(
-            df=merged, df_orig=df_orig,
-            save_path=save_path, export_path=export_path)
-        supervisor.show()
-    except ImportError:
-        print("⚠ ipywidgets non disponible — "
-              "exécutez depuis un notebook Jupyter/Colab.")
-        print(f"  Progression : {save_path}")
-        print(f"  Export XLSX : {export_path}")
+    if args.mode == "push":
+        push_to_argilla(merged, df_orig, args)
+    elif args.mode == "export":
+        export_from_argilla(merged, df_orig, args)
 
 
 if __name__ == "__main__":

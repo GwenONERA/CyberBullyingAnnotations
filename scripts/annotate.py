@@ -1,43 +1,6 @@
 #!/usr/bin/env python3
 """
-Script d'annotation automatisée des émotions via LLM.
-
-Usage (exemples) :
-    # Bedrock Claude Sonnet (défaut)
-    python scripts/annotate.py \
-        --xlsx data/homophobie_scenario_julie.xlsx \
-        --thematique homophobie \
-        --run_id homophobie_run001
-
-    # Bedrock Mistral Pixtral
-    python scripts/annotate.py \
-        --xlsx data/mon_fichier.xlsx \
-        --thematique racisme \
-        --run_id racisme_run001 \
-        --model_provider bedrock \
-        --model mistral-pixtral
-
-    # HuggingFace DeepSeek
-    python scripts/annotate.py \
-        --xlsx data/mon_fichier.xlsx \
-        --thematique sexisme \
-        --run_id sexisme_run001 \
-        --model_provider huggingface \
-        --model "deepseek-ai/DeepSeek-V3.2:novita"
-
-    # Gemini Flash (Colab uniquement)
-    python scripts/annotate.py \
-        --xlsx data/mon_fichier.xlsx \
-        --thematique homophobie \
-        --run_id homophobie_gemini_run001 \
-        --model_provider gemini
-
-    # Avec annotations d'experts dans le prompt
-    python scripts/annotate.py \
-        --xlsx data/mon_fichier.xlsx \
-        --thematique homophobie \
-        --run_id homophobie_run002 \
-        --use_annotations
+Script d'annotation via LLM.
 """
 
 import argparse
@@ -99,8 +62,13 @@ def parse_args():
     
     # ── Paramètres d'exécution ──
     p.add_argument("--retry_idx", type=int, nargs="+", default=None,
-                   help="Liste d'index (idx) à ré-annoter spécifiquement (ex: --retry_idx 51 52). "
+                   help="Liste d'index (idx) à ré-annoter spécifiquement. "
                         "Met à jour le fichier JSONL existant in-place.")
+    p.add_argument("--runfrom", type=int, default=None,
+                   help="Index de départ (entier ≥ 1) à partir duquel lancer "
+                        "l'annotation jusqu'à la fin du fichier. "
+                        "Ignore la progression sauvegardée et écrase le JSONL "
+                        "existant pour les lignes concernées.")
 
     # ── Paramètres LLM ──
     p.add_argument("--max_tokens", type=int, default=512,
@@ -122,10 +90,25 @@ def parse_args():
 def main():
     args = parse_args()
 
+    # ── Vérification : --retry_idx et --runfrom sont mutuellement exclusifs ──
+    if args.retry_idx is not None and args.runfrom is not None:
+        print("✗ Les options --retry_idx et --runfrom sont mutuellement exclusives.")
+        sys.exit(1)
+
     # ═══ 1. CHARGEMENT ═════════════════════════════════════════════════════
     xlsx_path = os.path.abspath(args.xlsx)
     df = pd.read_excel(xlsx_path)
-    print(f"✓ {len(df)} lignes chargées depuis {os.path.basename(xlsx_path)}")
+    total = len(df)
+    print(f"✓ {total} lignes chargées depuis {os.path.basename(xlsx_path)}")
+
+    # ── Validation de --runfrom ──
+    if args.runfrom is not None:
+        if args.runfrom < 1 or args.runfrom > total:
+            print(
+                f"✗ --runfrom doit être un entier entre 1 et {total} "
+                f"(reçu : {args.runfrom})."
+            )
+            sys.exit(1)
 
     # ═══ 2. CONFIGURATION ═════════════════════════════════════════════════
     out_dir = args.out_dir or os.path.join(REPO_ROOT, "outputs", args.thematique)
@@ -144,12 +127,13 @@ def main():
     provider = get_provider(args.model_provider, args.model, **provider_kwargs)
     print(f"✓ Provider : {args.model_provider} / {args.model}")
 
-    # ═══ 4. REPRISE OU RETRY CIBLÉ ════════════════════════════════════════
+    # ═══ 4. REPRISE, RETRY CIBLÉ OU RUNFROM ═══════════════════════════════
     progress = load_progress(progress_path)
-    total = len(df)
     jsonl_path = os.path.join(out_dir, f"{args.run_id}.jsonl")
     
-    is_retry_mode = args.retry_idx is not None
+    is_retry_mode  = args.retry_idx is not None
+    is_runfrom_mode = args.runfrom is not None
+
     if is_retry_mode:
         indices_to_run = args.retry_idx
         print(f"▸ MODE RETRY : ré-annotation ciblée des {len(indices_to_run)} index ({indices_to_run})")
@@ -157,6 +141,22 @@ def main():
         all_records = load_jsonl_records(jsonl_path)
         if not all_records:
             print(f"⚠ Fichier {jsonl_path} vide ou inexistant. Impossible de faire un retry in-place complet.")
+
+    elif is_runfrom_mode:
+        # --runfrom N : l'utilisateur raisonne en « ligne N » (1-indexé),
+        # on convertit en index 0-indexé pour le DataFrame.
+        start_idx = args.runfrom - 1
+        indices_to_run = list(range(start_idx, total))
+        print(
+            f"▸ MODE RUNFROM : démarrage à la ligne {args.runfrom} "
+            f"(idx={start_idx}) → {total} (idx={total - 1})  "
+            f"— {len(indices_to_run)} lignes à traiter"
+        )
+        # Charger le JSONL existant pour pouvoir mettre à jour in-place
+        all_records = load_jsonl_records(jsonl_path)
+        if not all_records:
+            all_records = []
+
     else:
         start_idx = progress["last_completed_idx"] + 1
         indices_to_run = list(range(start_idx, total))
@@ -234,13 +234,13 @@ def main():
         }
 
         # ── Persistance / Mise à jour ──
-        if is_retry_mode:
-            # Remplacement en mémoire du record
+        if is_retry_mode or is_runfrom_mode:
+            # Remplacement / ajout en mémoire du record
             new_record = build_record(
                 args.run_id, idx, row_id, full_prompt_log, raw_text, llm_result,
                 parsed_obj, json_ok, json_error, validation_warnings, extra_meta
             )
-            # Chercher le record existant
+            # Chercher le record existant pour le remplacer
             replaced = False
             for i, rec in enumerate(all_records):
                 if rec.get("idx") == idx:
@@ -249,7 +249,7 @@ def main():
                     break
             if not replaced:
                 all_records.append(new_record)
-                # On trie pour être sûr que ça reste ordonné si on ajoute à la fin
+                # On trie pour garder l'ordre
                 all_records.sort(key=lambda x: x.get("idx", 0))
         else:
             # Mode standard : on append au jsonl et on écrit les temp files
@@ -290,15 +290,19 @@ def main():
 
         time.sleep(args.delay)
 
-    # ═══ 5b. SAUVEGARDE FINALE POUR LE MODE RETRY ══════════════════════════
-    if is_retry_mode:
+    # ═══ 5b. SAUVEGARDE FINALE POUR LES MODES RETRY ET RUNFROM ════════════
+    if is_retry_mode or is_runfrom_mode:
         print(f"▸ Écriture in-place de {len(all_records)} lignes dans {jsonl_path}...")
         save_jsonl_records(jsonl_path, all_records)
+        # En mode runfrom, on met aussi à jour la progression
+        if is_runfrom_mode and indices_to_run:
+            last_done = indices_to_run[-1]
+            save_progress(progress_path, last_completed_idx=last_done)
 
     # ═══ 6. NETTOYAGE items/ ═══════════════════════════════════════════════
     n_cleaned = cleanup_items_dir(out_dir, args.run_id)
     if n_cleaned:
-        print(f"🧹 {n_cleaned} fichiers temporaires supprimés (items/)")
+        print(f"{n_cleaned} fichiers temporaires supprimés (items/)")
 
     # ═══ 7. RÉSUMÉ ═════════════════════════════════════════════════════════
     elapsed_total = time.time() - t0

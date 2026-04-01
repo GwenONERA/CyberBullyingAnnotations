@@ -9,8 +9,8 @@ matplotlib
 seaborn
 numpy
 
-# Supervision manuelle (notebook)
-ipywidgets
+# Supervision via Argilla (HuggingFace Space)
+argilla
 
 # HuggingFace provider
 openai
