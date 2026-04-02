@@ -14,12 +14,6 @@
 ═════════════════════════════════════════════════════════════════
   TERMINÉ — Résultats dans : outputs/homophobie/emotyc_eval
 ═════════════════════════════════════════════════════════════════
-```
-cell
-```python
-!zip -r new.zip /content/new
-```
-
 
 
 ```python

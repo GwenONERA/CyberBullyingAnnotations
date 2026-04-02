@@ -452,4 +452,3 @@ SitEmo <redoute que la porte s’ouvre> {Mode : Désignée, Type : Base, Catégo
 Relation Affecte :
 <Pierre> <--Sujet-- <redoute que la porte s’ouvre>
 Quand une émotion Désignée est réalisée par un verbe (ex. redouter), tout le syntagme verbal est annoté avec l’Unité SitEmo. Si le verbe est inclus dans une proposition relative, cela implique parfois de délimiter des Unités discontinues. Par ailleurs, lorsque le déclencheur d’une émotion
-30
