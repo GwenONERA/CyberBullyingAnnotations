@@ -3,15 +3,16 @@
 Agrégation SitEmo → vecteur 19 labels binaires (compatible EMOTYC).
 
 Prend en entrée un JSONL d'annotations SitEmo (produit par annotate.py)
-et produit un fichier XLSX avec les vecteurs agrégés au niveau de la phrase.
+et produit un fichier XLSX directement utilisable par emotyc_predict.py
+(noms de colonnes avec accents).
 
 L'agrégation applique un OU logique sur toutes les SitEmo de chaque phrase :
 
   Emo = 1                si ≥1 SitEmo
   Comportementale = 1    si ∃ SitEmo avec mode="Comportementale"
-  Designee = 1           si ∃ SitEmo avec mode="Désignée"
-  Montree = 1            si ∃ SitEmo avec mode="Montrée"
-  Suggeree = 1           si ∃ SitEmo avec mode="Suggérée"
+  Désignée = 1           si ∃ SitEmo avec mode="Désignée"
+  Montrée = 1            si ∃ SitEmo avec mode="Montrée"
+  Suggérée = 1           si ∃ SitEmo avec mode="Suggérée"
   Base = 1               si ∃ SitEmo avec catégorie ∈ {émotions de base}
   Complexe = 1           si ∃ SitEmo avec catégorie ∈ {émotions complexes}
   <Émotion> = 1          si ∃ SitEmo avec categorie ou categorie2 = <Émotion>
@@ -36,12 +37,12 @@ import pandas as pd
 #  CONSTANTES — correspondance exacte avec id2label d'EMOTYC
 # ═══════════════════════════════════════════════════════════════════════════
 
-# Ordre des 19 labels dans id2label d'EMOTYC
+# Ordre des 19 labels dans id2label d'EMOTYC (noms avec accents)
 VECTOR_ORDER = [
-    "Emo", "Comportementale", "Designee", "Montree", "Suggeree",
+    "Emo", "Comportementale", "Désignée", "Montrée", "Suggérée",
     "Base", "Complexe",
-    "Admiration", "Autre", "Colere", "Culpabilite", "Degout",
-    "Embarras", "Fierte", "Jalousie", "Joie", "Peur", "Surprise", "Tristesse",
+    "Admiration", "Autre", "Colère", "Culpabilité", "Dégoût",
+    "Embarras", "Fierté", "Jalousie", "Joie", "Peur", "Surprise", "Tristesse",
 ]
 
 # Émotions de base
@@ -50,15 +51,15 @@ EMOTIONS_BASE = {"Colère", "Dégoût", "Joie", "Peur", "Surprise", "Tristesse"}
 # Émotions complexes
 EMOTIONS_COMPLEXES = {"Admiration", "Culpabilité", "Embarras", "Fierté", "Jalousie"}
 
-# Mapping catégorie (avec accents) → nom dans le vecteur (sans accents)
+# Mapping catégorie → nom dans le vecteur (identité, avec accents)
 CAT_TO_VECTOR = {
     "Admiration":   "Admiration",
     "Autre":        "Autre",
-    "Colère":       "Colere",
-    "Culpabilité":  "Culpabilite",
-    "Dégoût":       "Degout",
+    "Colère":       "Colère",
+    "Culpabilité":  "Culpabilité",
+    "Dégoût":       "Dégoût",
     "Embarras":     "Embarras",
-    "Fierté":       "Fierte",
+    "Fierté":       "Fierté",
     "Jalousie":     "Jalousie",
     "Joie":         "Joie",
     "Peur":         "Peur",
@@ -66,12 +67,12 @@ CAT_TO_VECTOR = {
     "Tristesse":    "Tristesse",
 }
 
-# Mapping mode (avec accents) → nom dans le vecteur (sans accents)
+# Mapping mode → nom dans le vecteur (avec accents)
 MODE_TO_VECTOR = {
-    "Désignée":         "Designee",
+    "Désignée":         "Désignée",
     "Comportementale":  "Comportementale",
-    "Suggérée":         "Suggeree",
-    "Montrée":          "Montree",
+    "Suggérée":         "Suggérée",
+    "Montrée":          "Montrée",
 }
 
 
@@ -326,7 +327,18 @@ def main():
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     df_out.to_excel(output_path, index=False, engine="openpyxl")
 
-    # ── 4. Résumé ─────────────────────────────────────────────────────
+    # ── 4. Validation compatibilité emotyc_predict.py ─────────────────
+    required_emotions = [
+        "Colère", "Dégoût", "Joie", "Peur", "Surprise", "Tristesse",
+        "Admiration", "Culpabilité", "Embarras", "Fierté", "Jalousie",
+    ]
+    missing_emo = [e for e in required_emotions if e not in df_out.columns]
+    if missing_emo:
+        print(f"\n⚠ Colonnes d'émotions manquantes pour emotyc_predict.py : {missing_emo}")
+    else:
+        print(f"\n▸ Fichier directement compatible avec emotyc_predict.py ✓")
+
+    # ── 5. Résumé ─────────────────────────────────────────────────────
     print(f"\n{'═' * 60}")
     print(f"  AGRÉGATION TERMINÉE")
     print(f"{'═' * 60}")

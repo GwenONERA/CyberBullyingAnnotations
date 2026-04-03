@@ -9,8 +9,11 @@ Annotation/
 ├── data/                          # Fichiers XLSX sources
 ├── scripts/
 │   ├── annotate.py                # Annotation LLM (CLI)
+│   ├── aggregate.py               # Agrégation SitEmo → 19 labels EMOTYC (CLI)
+│   ├── flatten_gold.py            # Aplatissement gold label supervisé (CLI)
+│   ├── emotyc_predict.py          # Inférence EMOTYC + comparaison (CLI)
 │   ├── compare.py                 # Comparaison inter-runs (CLI)
-│   └── supervise.py               # Supervision manuelle (notebook)
+│   └── supervise.py               # Supervision manuelle (Argilla)
 ├── src/cyberagg_llm_annot/        # Bibliothèque interne
 │   ├── llm_providers.py           # Providers LLM (Bedrock, Gemini, HF)
 │   ├── prompt_utils.py            # Prompts et taxonomy
@@ -90,13 +93,51 @@ python scripts/compare.py \
     --label_run2 "sans experts"
 ```
 
-### 3. Supervision manuelle (notebook)
+### 3. Supervision manuelle (Argilla)
 
 ```python
 %run scripts/supervise.py \
     --run1 outputs/homophobie/run001.jsonl \
     --run2 outputs/homophobie/run002.jsonl \
     --xlsx data/homophobie_scenario_julie.xlsx
+```
+
+### 4. Évaluation EMOTYC
+
+Deux pipelines mènent à l'évaluation via `emotyc_predict.py` :
+
+**Pipeline avec supervision humaine (recommandée) :**
+```
+annotate.py → supervise.py → XLSX validé → flatten_gold.py → emotyc_predict.py
+```
+
+```bash
+# Aplatir le gold label supervisé
+python scripts/flatten_gold.py \
+    --input /chemin/vers/annotations_validees.xlsx \
+    --output outputs/homophobie/annotations_gold_flat.xlsx
+
+# Inférence EMOTYC
+python scripts/emotyc_predict.py \
+    --xlsx outputs/homophobie/annotations_gold_flat.xlsx \
+    --out_dir outputs/homophobie/emotyc_eval
+```
+
+**Pipeline sans supervision (évaluation rapide) :**
+```
+annotate.py → aggregate.py → emotyc_predict.py
+```
+
+```bash
+# Agréger les annotations LLM (XLSX directement compatible emotyc_predict.py)
+python scripts/aggregate.py \
+    --input outputs/homophobie/run001.jsonl \
+    --output outputs/homophobie/run001_aggregated.xlsx
+
+# Inférence EMOTYC
+python scripts/emotyc_predict.py \
+    --xlsx outputs/homophobie/run001_aggregated.xlsx \
+    --out_dir outputs/homophobie/emotyc_eval
 ```
 
 ### 4. EMOTYC

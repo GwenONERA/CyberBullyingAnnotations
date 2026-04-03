@@ -32,7 +32,7 @@ MODE_COLORS_SOLID = {
 
 MODES = list(MODE_COLORS.keys())
 
-# ── column renaming (aggregate.py uses unaccented names) ────────────
+# ── column renaming (legacy aggregate.py outputs used unaccented names) ─
 COL_RENAME = {
     "Designee":    "Désignée",
     "Montree":     "Montrée",
@@ -44,7 +44,7 @@ COL_RENAME = {
 }
 
 def normalise_record(row: dict) -> dict:
-    """Rename unaccented aggregate.py columns to accented names.
+    """Rename legacy unaccented columns to accented names (no-op if already accented).
     Also promote _span_details → spans_json when spans_json is absent."""
     out = {}
     for k, v in row.items():
