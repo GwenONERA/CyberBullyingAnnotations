@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script 1/3 — Inférence EMOTYC locale et comparaison au gold label.
+Inférence EMOTYC locale et comparaison au gold label.
 
 Charge le modèle EMOTYC (TextToKids/CamemBERT-base-EmoTextToKids),
 applique les prédictions sur chaque ligne du gold label, compare
@@ -29,6 +29,13 @@ import json
 import os
 import sys
 import math
+
+# Fix torch CUDA DLL loading on Windows
+if sys.platform == "win32":
+    _torch_lib = os.path.join(sys.prefix, "Lib", "site-packages", "torch", "lib")
+    if os.path.isdir(_torch_lib):
+        os.add_dll_directory(_torch_lib)
+        os.environ["PATH"] = _torch_lib + os.pathsep + os.environ.get("PATH", "")
 
 import numpy as np
 import pandas as pd
@@ -62,7 +69,6 @@ EMOTION_ORDER = list(GOLD_TO_EMOTYC.keys())
 
 # Seuils optimisés — issus du notebook retroIngenierie sur un corpus de 2451 phrases
 # Template bca_v3 : before:</s>current:{s}</s>after:</s>
-# Ces seuils servent à reproduire les outputs du modèle EMOTYC web.
 OPTIMIZED_THRESHOLDS = {
     "Admiration":  0.9531926895718311,   # (swap admiration ↔ autre)
     "Colère":      0.28217218720548165,
@@ -92,8 +98,9 @@ EMOTION_INDICES = {
     for gold_name, emotyc_name in GOLD_TO_EMOTYC.items()
 }
 
-# Swap admiration ↔ autre (identifié dans retroIngenierie notebook)
-SWAP_PAIRS = [(EMOTYC_LABEL2ID["Admiration"], EMOTYC_LABEL2ID["Autre"])]
+# Swap admiration ↔ autre — désactivé : produit des FP parasites sur corpus cyberharcèlement
+# SWAP_PAIRS = [(EMOTYC_LABEL2ID["Admiration"], EMOTYC_LABEL2ID["Autre"])]
+SWAP_PAIRS = []
 
 # ── Constantes pour les modes d'expression ────────────────────────────────
 MODE_ORDER = ["Comportementale", "Designee", "Montree", "Suggeree"]
@@ -168,7 +175,7 @@ def format_input(tokenizer, sentence, prev_sentence=None, next_sentence=None,
     """
     if no_template:
         return sentence
-    eos = tokenizer.eos_token  # </s>
+    eos = tokenizer.eos_token
     if use_context:
         prev = prev_sentence or eos
         nxt = next_sentence or eos
@@ -226,7 +233,7 @@ def load_gold_labels(xlsx_path):
             text_col = candidate
             break
     if text_col is None:
-        print("  ✗ Colonne texte non trouvée (TEXT/text/sentence)")
+        print("Colonne texte non trouvée (TEXT/text/sentence)")
         sys.exit(1)
 
     # Détecter les colonnes de mode (optionnelles)

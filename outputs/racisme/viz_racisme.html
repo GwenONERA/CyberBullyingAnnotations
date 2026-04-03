@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"/>
+<title>Racisme — Visualisation des modes d'expression</title>
+<style>
+  body {
+    font-family: "Segoe UI", Arial, sans-serif;
+    font-size: 11px;
+    line-height: 1.25;
+    margin: 20px;
+    color: #222;
+  }
+  h1 { font-size: 18px; margin-bottom: 4px; }
+  h2 { font-size: 14px; margin: 12px 0 4px; }
+  .stats-grid {
+    display: flex; gap: 24px; flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .stat-box {
+    background: #f5f5f5; border-radius: 6px; padding: 8px 14px;
+  }
+  .stat-box h3 { margin: 0 0 4px; font-size: 12px; }
+  .bar-row {
+    display: flex; align-items: center; gap: 4px;
+    margin: 1px 0; font-size: 10px;
+  }
+  .bar-label { width: 110px; text-align: right; }
+  .bar {
+    height: 12px; border-radius: 2px; min-width: 2px;
+  }
+  .legend {
+    display: flex; gap: 14px; margin: 8px 0 10px;
+    font-size: 11px; align-items: center;
+  }
+  .legend-item {
+    display: inline-flex; align-items: center; gap: 3px;
+  }
+  .legend-swatch {
+    display: inline-block; width: 14px; height: 14px;
+    border-radius: 2px;
+  }
+  .text-row {
+    padding: 3px 0;
+    border-bottom: 1px solid #eee;
+  }
+  .text-idx {
+    color: #999; font-size: 9px; margin-right: 6px;
+    display: inline-block; width: 36px; text-align: right;
+  }
+  .hl {
+    border-radius: 2px;
+    padding: 0 1px;
+  }
+  .badge {
+    display: inline-block;
+    color: #fff;
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-left: 3px;
+  }
+  .meta {
+    color: #777; font-size: 9px; margin-left: 6px;
+  }
+  #filter-bar {
+    margin: 8px 0;
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  }
+  #filter-bar label {
+    font-size: 11px; cursor: pointer;
+  }
+  #filter-bar input[type=checkbox] { margin-right: 2px; }
+  #search-box {
+    font-size: 11px; padding: 2px 6px; width: 220px;
+  }
+  .toggle-btn {
+    font-size: 10px; padding: 2px 8px; border: 1px solid #bbb;
+    border-radius: 3px; cursor: pointer; background: #fff; color: #444;
+  }
+  .toggle-btn.active {
+    background: #e0e0e0; border-color: #999;
+  }
+  .char-name { font-size: 10px; font-weight: bold; }
+  .char-role { color: #777; font-size: 9px; margin-left: 6px; }
+  .hide-names .char-name { display: none; }
+  .hide-roles .char-role { display: none; }
+</style>
+</head>
+<body>
+<h1>Racisme — Visualisation des modes d'expression</h1>
+<p style="font-size:11px;color:#666;">145 textes avec au moins une émotion annotée (textes sans émotion filtrés)</p>
+
+<div class="stats-grid">
+<div class="stat-box"><h3>Distribution des modes</h3>
+<div class="bar-row"><span class="bar-label">Montrée</span><div class="bar" style="width:200px;background:rgb(120, 50, 140);"></div><span>111</span></div>
+<div class="bar-row"><span class="bar-label">Suggérée</span><div class="bar" style="width:55px;background:rgb(180, 100, 20);"></div><span>31</span></div>
+<div class="bar-row"><span class="bar-label">Comportementale</span><div class="bar" style="width:52px;background:rgb(0, 130, 100);"></div><span>29</span></div>
+<div class="bar-row"><span class="bar-label">Désignée</span><div class="bar" style="width:27px;background:rgb(40, 80, 160);"></div><span>15</span></div>
+</div>
+<div class="stat-box"><h3>Distribution des émotions</h3>
+<div class="bar-row"><span class="bar-label">Colère</span><div class="bar" style="width:200px;background:#888;"></div><span>112</span></div>
+<div class="bar-row"><span class="bar-label">Dégoût</span><div class="bar" style="width:69px;background:#888;"></div><span>39</span></div>
+<div class="bar-row"><span class="bar-label">Autre</span><div class="bar" style="width:33px;background:#888;"></div><span>19</span></div>
+<div class="bar-row"><span class="bar-label">Joie</span><div class="bar" style="width:32px;background:#888;"></div><span>18</span></div>
+<div class="bar-row"><span class="bar-label">Fierté</span><div class="bar" style="width:8px;background:#888;"></div><span>5</span></div>
+<div class="bar-row"><span class="bar-label">Tristesse</span><div class="bar" style="width:7px;background:#888;"></div><span>4</span></div>
+<div class="bar-row"><span class="bar-label">Jalousie</span><div class="bar" style="width:5px;background:#888;"></div><span>3</span></div>
+<div class="bar-row"><span class="bar-label">Peur</span><div class="bar" style="width:3px;background:#888;"></div><span>2</span></div>
+<div class="bar-row"><span class="bar-label">Surprise</span><div class="bar" style="width:3px;background:#888;"></div><span>2</span></div>
+</div></div>
+<div class="legend"><span class="legend-item"><span class="legend-swatch" style="background:rgb(40, 80, 160);"></span>Désignée</span> <span class="legend-item"><span class="legend-swatch" style="background:rgb(0, 130, 100);"></span>Comportementale</span> <span class="legend-item"><span class="legend-swatch" style="background:rgb(180, 100, 20);"></span>Suggérée</span> <span class="legend-item"><span class="legend-swatch" style="background:rgb(120, 50, 140);"></span>Montrée</span></div>
+<div id="filter-bar"><label style="color:rgb(40, 80, 160);font-weight:600;"><input type="checkbox" class="mode-filter" value="Désignée" checked> Désignée</label><label style="color:rgb(0, 130, 100);font-weight:600;"><input type="checkbox" class="mode-filter" value="Comportementale" checked> Comportementale</label><label style="color:rgb(180, 100, 20);font-weight:600;"><input type="checkbox" class="mode-filter" value="Suggérée" checked> Suggérée</label><label style="color:rgb(120, 50, 140);font-weight:600;"><input type="checkbox" class="mode-filter" value="Montrée" checked> Montrée</label><button id="toggle-names" class="toggle-btn" title="Masquer/afficher les noms">Noms</button><button id="toggle-roles" class="toggle-btn" title="Masquer/afficher les rôles">Rôles</button><input type="text" id="search-box" placeholder="Rechercher dans les textes…"><span style="font-size:10px;color:#999;">Affichés: <span id="shown-count">145</span> / 145</span></div>
+<h2>Textes</h2>
+<div class="text-row" data-modes="Suggérée"><span class="text-idx">1</span><span class="char-name"></span> <span class="char-role">[]</span> ça lui fera de l&#x27;argent <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">pour une fois qu&#x27;elle en aura</span><span class="meta">[]</span></div>
+<div class="text-row" data-modes="Désignée,Montrée"><span class="text-idx">2</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">bande de </span><span class="hl" style="background:rgba(40, 80, 160, 0.30);border-bottom:2px solid rgb(120, 50, 140);" title="Désignée + Montrée">jaloux</span><span class="meta">[Colère, Jalousie]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">3</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">tu montre ton cu tassume</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Comportementale"><span class="text-idx">4</span><span class="char-name"></span> <span class="char-role">[]</span> bh <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">elle va aller porter plainte</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Comportementale"><span class="text-idx">5</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">tkt jai pas besoin de ton argent</span><span class="meta">[Colère, Fierté]</span></div>
+<div class="text-row" data-modes="Suggérée,Montrée"><span class="text-idx">6</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">c&#x27;est pas dans son pays qu&#x27;elle en aura </span><span class="hl" style="background:rgba(120, 50, 140, 0.30);border-bottom:2px solid rgb(180, 100, 20);" title="Montrée + Suggérée">:&#x27;) :&#x27;)</span><span class="meta">[Joie]</span></div>
+<div class="text-row" data-modes="Suggérée"><span class="text-idx">7</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">on verra a la sorti</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Comportementale"><span class="text-idx">8</span><span class="char-name"></span> <span class="char-role">[]</span> tkt <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">je l&#x27;attendrais devant chez elle</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Suggérée"><span class="text-idx">9</span><span class="char-name"></span> <span class="char-role">[]</span> theo <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">on va te meler aussi</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Suggérée"><span class="text-idx">10</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">on va venir à plusieurs</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">11</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">derrière leur ecran la</span><span class="meta">[]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">12</span><span class="char-name"></span> <span class="char-role">[]</span> et <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">ta guele</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">part terre ensuite</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Suggérée,Montrée"><span class="text-idx">13</span><span class="char-name"></span> <span class="char-role">[]</span> tkktt <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">on t&#x27;attendra a 2</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">on te ntm</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Comportementale"><span class="text-idx">14</span><span class="char-name"></span> <span class="char-role">[]</span> tkt pas en face <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">je vais te montrer mon petit bijoux</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">15</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">tu nique personne</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Désignée,Montrée"><span class="text-idx">16</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(40, 80, 160, 0.30);" title="Désignée">tu crois on a peur de toi</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">t degun redesend</span><span class="meta">[Colère, Dégoût, Peur]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">17</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">mere teresa</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">tg</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Désignée"><span class="text-idx">18</span><span class="char-name"></span> <span class="char-role">[]</span> avec d&#x27;autres qui <span class="hl" style="background:rgba(40, 80, 160, 0.30);" title="Désignée">n&#x27;aiment pas les arabes</span> comme toi<span class="meta">[Autre]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">19</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">tu nike ta mere plutot</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">et encore</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">20</span><span class="char-name"></span> <span class="char-role">[]</span> bon euh <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">vs avez fini de parler pour rien ?</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Désignée,Comportementale,Montrée"><span class="text-idx">21</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">ooooh</span> theresa <span class="hl" style="background:rgba(40, 80, 160, 0.30);" title="Désignée">tu me chauffes</span> <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">tu veux le meme sort?</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Comportementale,Montrée"><span class="text-idx">22</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">ta 12 ans tu fait la grande</span> ta pote et a pooile sur la plage et <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">se plaint apres</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">23</span><span class="char-name"></span> <span class="char-role">[]</span> theo arrete de defendre vrm <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">on dirait que t&#x27;es pas francais</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">24</span><span class="char-name"></span> <span class="char-role">[]</span> appelez carla <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">elle va faire la sorcellerie</span> jai des contacts<span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">25</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">mai a poil de koi</span><span class="meta">[Surprise]</span></div>
+<div class="text-row" data-modes="Comportementale,Suggérée"><span class="text-idx">26</span><span class="char-name"></span> <span class="char-role">[]</span> mais oui <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">il fait le beau</span> parceque t&#x27;es une gadjis mais <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">devant un mec il ferra rien</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">27</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">tg toi</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Suggérée,Montrée"><span class="text-idx">28</span><span class="char-name"></span> <span class="char-role">[]</span> la pauline <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">on voyait son cul</span> et <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">elle vient m harceler apres la</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">29</span><span class="char-name"></span> <span class="char-role">[]</span> oe ta raison c <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">la plus grosse des pute</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Suggérée"><span class="text-idx">30</span><span class="char-name"></span> <span class="char-role">[]</span> parce qu&#x27;<span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">elle elle est dans son pays</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">31</span><span class="char-name"></span> <span class="char-role">[]</span> teresa <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">ftg</span> va a l&#x27;eglise<span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">32</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">ça t&#x27;éduqueras un peu</span><span class="meta">[]</span></div>
+<div class="text-row" data-modes="Suggérée,Montrée"><span class="text-idx">33</span><span class="char-name"></span> <span class="char-role">[]</span> j sui sur <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">t es jamais allé a leglise</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">hypocrite</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">34</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">on te brule toi a leglise</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Désignée"><span class="text-idx">35</span><span class="char-name"></span> <span class="char-role">[]</span> mais <span class="hl" style="background:rgba(40, 80, 160, 0.30);" title="Désignée">vs en avez pas marre</span>, vs voulez pas vs re parler et mettre les choses a plat ?<span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">36</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">oe grave tu parles</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">37</span><span class="char-name"></span> <span class="char-role">[]</span> theo <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">tu sers a rien</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Suggérée,Montrée"><span class="text-idx">38</span><span class="char-name"></span> <span class="char-role">[]</span> fatima arrete la <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">mascarade</span> on sait que toi t&#x27;es un autre delire toi <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">tu fais la manche devant frr</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">39</span><span class="char-name"></span> <span class="char-role">[]</span> j prefere faire la manche que <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">la pute comme ta mere</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Suggérée"><span class="text-idx">40</span><span class="char-name"></span> <span class="char-role">[]</span> c a eux d&#x27;arreter <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">d&#x27;harceler les gens</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">41</span><span class="char-name"></span> <span class="char-role">[]</span> si je sert a regler vos <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">problemes de merde</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Désignée,Montrée"><span class="text-idx">42</span><span class="char-name"></span> <span class="char-role">[]</span> la prochaine fois <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">tu mettra un voile comme t es parents</span> au lieu de <span class="hl" style="background:rgba(40, 80, 160, 0.30);" title="Désignée">nous faire cvhier</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Comportementale"><span class="text-idx">43</span><span class="char-name"></span> <span class="char-role">[]</span> fatima <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">arrete de faire la folle</span> <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">tu vas vrm le payer</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Suggérée,Montrée"><span class="text-idx">44</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">sa sort des cour sa mes le voile mais a la plage sa montre son cu</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">ptdrrrrrr</span><span class="meta">[Dégoût, Joie]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">45</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">mddddddr</span><span class="meta">[Joie]</span></div>
+<div class="text-row" data-modes="Suggérée,Montrée"><span class="text-idx">46</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">on va faire des montages tu as te retrouver à poil sur internet</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">ptddrrrr</span><span class="meta">[Colère, Dégoût, Joie]</span></div>
+<div class="text-row" data-modes="Comportementale"><span class="text-idx">47</span><span class="char-name"></span> <span class="char-role">[]</span> nicolas <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">tu vas trop loin la</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Suggérée"><span class="text-idx">48</span><span class="char-name"></span> <span class="char-role">[]</span> tkt <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">tu vas retrouver en prison</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">49</span><span class="char-name"></span> <span class="char-role">[]</span> theo <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">ftg</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">50</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">rooohh</span> theo c&#x27;est toi la<span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Comportementale"><span class="text-idx">51</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">elle va porter plainte</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">52</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">tampis pour vous</span><span class="meta">[Autre]</span></div>
+<div class="text-row" data-modes="Suggérée,Montrée"><span class="text-idx">53</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">tg</span> theo <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">la veriter blaisse tu te sens mal</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">54</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">tg toi</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Suggérée,Montrée"><span class="text-idx">55</span><span class="char-name"></span> <span class="char-role">[]</span> teresa <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">les preuves disparaissent comme </span><span class="hl" style="background:rgba(120, 50, 140, 0.30);border-bottom:2px solid rgb(180, 100, 20);" title="Montrée + Suggérée">fatima va disparaitre</span><span class="meta">[Colère, Autre]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">56</span><span class="char-name"></span> <span class="char-role">[]</span> t&#x27;es entrain de parler <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">cave</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">57</span><span class="char-name"></span> <span class="char-role">[]</span> nous aussi les screen <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">quan tu montre ton cu</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Comportementale"><span class="text-idx">58</span><span class="char-name"></span> <span class="char-role">[]</span> depuis talleur <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">tu l&#x27;insulte</span> tu parle de montage<span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">59</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">oui tktt chez la police</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">60</span><span class="char-name"></span> <span class="char-role">[]</span>  rien prouve que c&#x27;est moi <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">;D</span><span class="meta">[Joie]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">61</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">tu crois ils vont te croire</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">62</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">continuer de faire les malins</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">63</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">va chez la police on tenmene meme si tu veux</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">64</span><span class="char-name"></span> <span class="char-role">[]</span> teresa <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">je vais pas le répeter</span> tu n&#x27;y iras pas chez la police<span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Désignée,Montrée"><span class="text-idx">65</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">mais </span><span class="hl" style="background:rgba(40, 80, 160, 0.30);border-bottom:2px solid rgb(120, 50, 140);" title="Désignée + Montrée">cest ridicule</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Comportementale"><span class="text-idx">66</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">donc chute merci</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">67</span><span class="char-name"></span> <span class="char-role">[]</span> ah et <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">tu croit quoi</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Désignée,Suggérée,Montrée"><span class="text-idx">68</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(40, 80, 160, 0.30);" title="Désignée">on va s&#x27;en sortir triomphant</span> on va <span class="hl" style="background:rgba(120, 50, 140, 0.30);border-bottom:2px solid rgb(180, 100, 20);" title="Montrée + Suggérée">expulser tous les arabes comme toi</span><span class="meta">[Colère, Dégoût, Joie, Fierté, Autre]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">69</span><span class="char-name"></span> <span class="char-role">[]</span> regler vos problemes comme des adultes au lieu de <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">parler pour rien la</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">70</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">c la prison pour 4 message</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Comportementale,Suggérée"><span class="text-idx">71</span><span class="char-name"></span> <span class="char-role">[]</span> bon fatima <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">retournes chez tamr</span> <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">pleurer</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">72</span><span class="char-name"></span> <span class="char-role">[]</span> theo <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">ftg</span> vrm <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">tu sers à r</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">73</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">t tellement peu cultiver</span> que <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">t meme pas au courant des consequences de sque tu fais</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">74</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">avec ton accent la</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">75</span><span class="char-name"></span> <span class="char-role">[]</span> la vie <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">t&#x27;es explosé</span> la <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">tu peux gérer degun</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Comportementale,Montrée"><span class="text-idx">76</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">jvais me suicider</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">tu vas voir si vous allez rien avoir</span><span class="meta">[Colère, Peur, Tristesse]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">77</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">enfin</span><span class="meta">[Joie]</span></div>
+<div class="text-row" data-modes="Comportementale,Montrée"><span class="text-idx">78</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">ecrit francais et tu viendra me parler culture&#x27;</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">mdrr</span><span class="meta">[Colère, Autre]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">79</span><span class="char-name"></span> <span class="char-role">[]</span> teresa tu parles de culture mais <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">chez toi y&#x27;a même pas accès à l&#x27;eau alors à l&#x27;ecole........</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">et ça se fait ressentir</span><span class="meta">[]</span></div>
+<div class="text-row" data-modes="Comportementale,Montrée"><span class="text-idx">80</span><span class="char-name"></span> <span class="char-role">[]</span> voila <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">sucide toi donc teresa</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">ta bien ouvert ta guele pour rien</span><span class="meta">[Colère, Autre]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">81</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">crève</span><span class="meta">[Colère, Autre]</span></div>
+<div class="text-row" data-modes="Comportementale,Suggérée"><span class="text-idx">82</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(0, 130, 100, 0.30);border-bottom:2px solid rgb(180, 100, 20);" title="Comportementale + Suggérée">vous irez en efer enfer*</span><span class="meta">[Colère, Autre]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">83</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">les blancs vont pas en enfer</span><span class="meta">[Autre]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">84</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">vs etes serieux ?</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">vs aimerais quon vs dises sa ?</span><span class="meta">[Colère, Surprise]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">85</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">on est purs nous</span><span class="meta">[Fierté, Autre]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">86</span><span class="char-name"></span> <span class="char-role">[]</span> oe <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">pure merde</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">87</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">de la même couleur ça vous fait un point commun</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">88</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">wouah le niveauxxxxxxx</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">89</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">y&#x27;a l&#x27;odeur aussi</span><span class="meta">[Dégoût]</span></div>
+<div class="text-row" data-modes="Comportementale,Montrée"><span class="text-idx">90</span><span class="char-name"></span> <span class="char-role">[]</span> avec vos <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">habits du bled</span> <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">la cassez vous</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">91</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">mdrr</span> c clair l <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">odeur infecte</span><span class="meta">[Dégoût, Joie]</span></div>
+<div class="text-row" data-modes="Désignée,Montrée"><span class="text-idx">92</span><span class="char-name"></span> <span class="char-role">[]</span> oo <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">tg pierre</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">me fais pas chier</span> <span class="hl" style="background:rgba(40, 80, 160, 0.30);" title="Désignée">jmen blc de ta vie franchement</span><span class="meta">[Colère, Autre]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">93</span><span class="char-name"></span> <span class="char-role">[]</span> teresa parle bien <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">ftg</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">94</span><span class="char-name"></span> <span class="char-role">[]</span> teresa fais comme fatima <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">ferme la</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">95</span><span class="char-name"></span> <span class="char-role">[]</span> alors <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">pk tu lui envoy un message si tu ten fou bien dit</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">96</span><span class="char-name"></span> <span class="char-role">[]</span> pauline et pierre <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">2 grosses merdes</span> qui parlent<span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Désignée,Montrée"><span class="text-idx">97</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">grv teresa t autant </span><span class="hl" style="background:rgba(40, 80, 160, 0.30);border-bottom:2px solid rgb(120, 50, 140);" title="Désignée + Montrée">inutile</span><span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée"> que Mbendib</span><span class="meta">[Autre]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">98</span><span class="char-name"></span> <span class="char-role">[]</span> quand tu <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">fermeras ta gueule</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Comportementale,Montrée"><span class="text-idx">99</span><span class="char-name"></span> <span class="char-role">[]</span> oyé <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">tous repostez en story les photos de </span><span class="hl" style="background:rgba(0, 130, 100, 0.30);border-bottom:2px solid rgb(120, 50, 140);" title="Comportementale + Montrée">la negre</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Suggérée"><span class="text-idx">100</span><span class="char-name"></span> <span class="char-role">[]</span> et <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">tu venira en prison</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Désignée"><span class="text-idx">101</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(40, 80, 160, 0.30);" title="Désignée">on va bien se marrer</span><span class="meta">[Joie]</span></div>
+<div class="text-row" data-modes="Comportementale,Montrée"><span class="text-idx">102</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">parle pas de prison quand tu coco pas</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">mdrrr</span><span class="meta">[Colère, Dégoût, Autre]</span></div>
+<div class="text-row" data-modes="Suggérée"><span class="text-idx">103</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">demain on imprime on affiche?</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">104</span><span class="char-name"></span> <span class="char-role">[]</span> fatima t une <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">grosse pute</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">a part envoyez des nudes tu f rien</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">105</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">mdrrr</span><span class="meta">[Joie]</span></div>
+<div class="text-row" data-modes="Désignée"><span class="text-idx">106</span><span class="char-name"></span> <span class="char-role">[]</span> normal <span class="hl" style="background:rgba(40, 80, 160, 0.30);" title="Désignée">j&#x27;suis une star</span><span class="meta">[Fierté]</span></div>
+<div class="text-row" data-modes="Suggérée,Montrée"><span class="text-idx">107</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">bon cest bon</span> <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">vs tourner en rond la depuis taleur</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Comportementale,Montrée"><span class="text-idx">108</span><span class="char-name"></span> <span class="char-role">[]</span> et elle <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">ose ouvrir sa bouche</span> de <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">suceuse</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">109</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">sa mère aussi</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Désignée,Suggérée"><span class="text-idx">110</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">t trop </span><span class="hl" style="background:rgba(40, 80, 160, 0.30);border-bottom:2px solid rgb(180, 100, 20);" title="Désignée + Suggérée">jalouse</span><span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée"> qu aucun mec te trouves belle</span><span class="meta">[Colère, Jalousie]</span></div>
+<div class="text-row" data-modes="Comportementale"><span class="text-idx">111</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">a part insulter vs faites rien d&#x27;autres</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">112</span><span class="char-name"></span> <span class="char-role">[]</span> c, <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">mdrr</span> elle t belle $*<span class="meta">[Joie]</span></div>
+<div class="text-row" data-modes="Comportementale"><span class="text-idx">113</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">toi eclater apr contre</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">114</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">tu sais parler nicolas ?</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">mdr</span><span class="meta">[Colère, Autre]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">115</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">apres cest moi qu est pas française</span><span class="meta">[Colère, Autre]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">116</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">comme une prostitué qu&#x27;elle fait bien</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">mdrr</span><span class="meta">[Colère, Dégoût, Joie]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">117</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">pour toi c sa et pas plus</span><span class="meta">[]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">118</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">vos geule</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Comportementale,Montrée"><span class="text-idx">119</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">vas apprendre la langue de ton pays </span><span class="hl" style="background:rgba(0, 130, 100, 0.30);border-bottom:2px solid rgb(120, 50, 140);" title="Comportementale + Montrée">déjà</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Comportementale,Montrée"><span class="text-idx">120</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">ptdr</span> maiis fatima <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">t&#x27;as vu ton orthographe</span><span class="meta">[Colère, Joie]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">121</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">t dans notre pays et tu parle</span><span class="meta">[Colère, Autre]</span></div>
+<div class="text-row" data-modes="Comportementale"><span class="text-idx">122</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">parle pas</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Suggérée"><span class="text-idx">123</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">elle insulte sa pote mtn</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">124</span><span class="char-name"></span> <span class="char-role">[]</span> vous etes <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">des gros gamins</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Désignée"><span class="text-idx">125</span><span class="char-name"></span> <span class="char-role">[]</span> moi <span class="hl" style="background:rgba(40, 80, 160, 0.30);" title="Désignée">c mon pays</span> o moinh<span class="meta">[Fierté]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">126</span><span class="char-name"></span> <span class="char-role">[]</span> donc <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">je me premer cque je veux par apport atoi</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">127</span><span class="char-name"></span> <span class="char-role">[]</span> ooo nicolas <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">tg</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">128</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">bisoussssssssssssssssssssssssssss</span><span class="meta">[Autre]</span></div>
+<div class="text-row" data-modes="Comportementale,Montrée"><span class="text-idx">129</span><span class="char-name"></span> <span class="char-role">[]</span> bon fatima <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">on va te </span><span class="hl" style="background:rgba(0, 130, 100, 0.30);border-bottom:2px solid rgb(120, 50, 140);" title="Comportementale + Montrée">ntm</span> tkt<span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">130</span><span class="char-name"></span> <span class="char-role">[]</span> tu peux pas savoir <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">fat fat</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Désignée,Comportementale"><span class="text-idx">131</span><span class="char-name"></span> <span class="char-role">[]</span> bref <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">bisous</span> de nous les <span class="hl" style="background:rgba(40, 80, 160, 0.30);" title="Désignée">jaloux</span><span class="meta">[Jalousie, Autre]</span></div>
+<div class="text-row" data-modes="Suggérée,Montrée"><span class="text-idx">132</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">meme ton soutien se casse </span><span class="hl" style="background:rgba(120, 50, 140, 0.30);border-bottom:2px solid rgb(180, 100, 20);" title="Montrée + Suggérée">t&#x27;es seule</span><span class="meta">[Colère, Tristesse]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">133</span><span class="char-name"></span> <span class="char-role">[]</span> javoue tu sais pas <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">tu parle meme pas francais</span><span class="meta">[]</span></div>
+<div class="text-row" data-modes="Suggérée"><span class="text-idx">134</span><span class="char-name"></span> <span class="char-role">[]</span> bon vs voulez pas vs reconcilier <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">jy peut rien</span><span class="meta">[Tristesse]</span></div>
+<div class="text-row" data-modes="Suggérée,Montrée"><span class="text-idx">135</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">mdrrrrr</span> <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">theo qui abandonne</span><span class="meta">[Joie]</span></div>
+<div class="text-row" data-modes="Comportementale,Montrée"><span class="text-idx">136</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">vas y ciao</span> les <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">ploucs</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Suggérée,Montrée"><span class="text-idx">137</span><span class="char-name"></span> <span class="char-role">[]</span>  tkt t&#x27;auras son cul quand meme <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">vu comment elle l&#x27;expose</span> &quot;les ploucs&quot; <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">mdrrrrrrrrrrrrrrrr</span><span class="meta">[Joie]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">138</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">retournez dans votre ferme traire vos meres</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">139</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">si l&#x27;unitilité etait une personne</span><span class="meta">[]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">140</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">t&#x27;as cru t&#x27;as dead ça?</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">141</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">ptdrrrr</span> punshline éclatées cousine oula non pas cousine <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">esclave</span><span class="meta">[Colère, Dégoût, Joie]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">142</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">&lt;3</span><span class="meta">[Autre]</span></div>
+<div class="text-row" data-modes="Suggérée"><span class="text-idx">143</span><span class="char-name"></span> <span class="char-role">[]</span> <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">comme au bon vieux temps</span><span class="meta">[Joie]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">144</span><span class="char-name"></span> <span class="char-role">[]</span> elle c cru sur skyrock la <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">:b</span><span class="meta">[Joie]</span></div>
+<div class="text-row" data-modes="Suggérée,Montrée"><span class="text-idx">145</span><span class="char-name"></span> <span class="char-role">[]</span> tete qu&#x27;<span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">elle a parle ps avk moi</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">grosse pute</span><span class="meta">[Colère, Tristesse]</span></div>
+<script>
+function applyFilters() {
+  var checks = document.querySelectorAll('.mode-filter');
+  var activeModes = [];
+  checks.forEach(function(cb) { if(cb.checked) activeModes.push(cb.value); });
+  var search = (document.getElementById('search-box') || {}).value || '';
+  search = search.toLowerCase();
+  var rows = document.querySelectorAll('.text-row');
+  var shown = 0;
+  rows.forEach(function(row) {
+    var modes = (row.dataset.modes || '').split(',');
+    var modeOk = activeModes.length === 0 || activeModes.some(function(m){ return modes.indexOf(m) >= 0; });
+    var textOk = !search || row.textContent.toLowerCase().indexOf(search) >= 0;
+    if (modeOk && textOk) { row.style.display=''; shown++; }
+    else { row.style.display='none'; }
+  });
+  document.getElementById('shown-count').textContent = shown;
+}
+document.querySelectorAll('.mode-filter').forEach(function(cb){ cb.addEventListener('change', applyFilters); });
+var sb = document.getElementById('search-box');
+if(sb) sb.addEventListener('input', applyFilters);
+var btnName = document.getElementById('toggle-names');
+var btnRole = document.getElementById('toggle-roles');
+if(btnName) btnName.addEventListener('click', function() {
+  document.body.classList.toggle('hide-names');
+  this.classList.toggle('active');
+});
+if(btnRole) btnRole.addEventListener('click', function() {
+  document.body.classList.toggle('hide-roles');
+  this.classList.toggle('active');
+});
+</script>
+</body>
+</html>

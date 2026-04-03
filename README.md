@@ -128,3 +128,4 @@ python scripts/compare.py \
 ## Émotions annotées (11)
 
 Colère · Dégoût · Joie · Peur · Surprise · Tristesse · Admiration · Culpabilité · Embarras · Fierté · Jalousie
+# CyberBullyingAnnotations

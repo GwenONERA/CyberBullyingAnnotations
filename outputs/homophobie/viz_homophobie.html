@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"/>
+<title>Homophobie — Visualisation des modes d'expression</title>
+<style>
+  body {
+    font-family: "Segoe UI", Arial, sans-serif;
+    font-size: 11px;
+    line-height: 1.25;
+    margin: 20px;
+    color: #222;
+  }
+  h1 { font-size: 18px; margin-bottom: 4px; }
+  h2 { font-size: 14px; margin: 12px 0 4px; }
+  .stats-grid {
+    display: flex; gap: 24px; flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .stat-box {
+    background: #f5f5f5; border-radius: 6px; padding: 8px 14px;
+  }
+  .stat-box h3 { margin: 0 0 4px; font-size: 12px; }
+  .bar-row {
+    display: flex; align-items: center; gap: 4px;
+    margin: 1px 0; font-size: 10px;
+  }
+  .bar-label { width: 110px; text-align: right; }
+  .bar {
+    height: 12px; border-radius: 2px; min-width: 2px;
+  }
+  .legend {
+    display: flex; gap: 14px; margin: 8px 0 10px;
+    font-size: 11px; align-items: center;
+  }
+  .legend-item {
+    display: inline-flex; align-items: center; gap: 3px;
+  }
+  .legend-swatch {
+    display: inline-block; width: 14px; height: 14px;
+    border-radius: 2px;
+  }
+  .text-row {
+    padding: 3px 0;
+    border-bottom: 1px solid #eee;
+  }
+  .text-idx {
+    color: #999; font-size: 9px; margin-right: 6px;
+    display: inline-block; width: 36px; text-align: right;
+  }
+  .hl {
+    border-radius: 2px;
+    padding: 0 1px;
+  }
+  .badge {
+    display: inline-block;
+    color: #fff;
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-left: 3px;
+  }
+  .meta {
+    color: #777; font-size: 9px; margin-left: 6px;
+  }
+  #filter-bar {
+    margin: 8px 0;
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  }
+  #filter-bar label {
+    font-size: 11px; cursor: pointer;
+  }
+  #filter-bar input[type=checkbox] { margin-right: 2px; }
+  #search-box {
+    font-size: 11px; padding: 2px 6px; width: 220px;
+  }
+  .toggle-btn {
+    font-size: 10px; padding: 2px 8px; border: 1px solid #bbb;
+    border-radius: 3px; cursor: pointer; background: #fff; color: #444;
+  }
+  .toggle-btn.active {
+    background: #e0e0e0; border-color: #999;
+  }
+  .char-name { font-size: 10px; font-weight: bold; }
+  .char-role { color: #777; font-size: 9px; margin-left: 6px; }
+  .hide-names .char-name { display: none; }
+  .hide-roles .char-role { display: none; }
+</style>
+</head>
+<body>
+<h1>Homophobie — Visualisation des modes d'expression</h1>
+<p style="font-size:11px;color:#666;">53 textes avec au moins une émotion annotée (textes sans émotion filtrés)</p>
+
+<div class="stats-grid">
+<div class="stat-box"><h3>Distribution des modes</h3>
+<div class="bar-row"><span class="bar-label">Montrée</span><div class="bar" style="width:200px;background:rgb(120, 50, 140);"></div><span>43</span></div>
+<div class="bar-row"><span class="bar-label">Comportementale</span><div class="bar" style="width:41px;background:rgb(0, 130, 100);"></div><span>9</span></div>
+<div class="bar-row"><span class="bar-label">Désignée</span><div class="bar" style="width:37px;background:rgb(40, 80, 160);"></div><span>8</span></div>
+<div class="bar-row"><span class="bar-label">Suggérée</span><div class="bar" style="width:32px;background:rgb(180, 100, 20);"></div><span>7</span></div>
+</div>
+<div class="stat-box"><h3>Distribution des émotions</h3>
+<div class="bar-row"><span class="bar-label">Colère</span><div class="bar" style="width:200px;background:#888;"></div><span>45</span></div>
+<div class="bar-row"><span class="bar-label">Dégoût</span><div class="bar" style="width:120px;background:#888;"></div><span>27</span></div>
+<div class="bar-row"><span class="bar-label">Autre</span><div class="bar" style="width:13px;background:#888;"></div><span>3</span></div>
+<div class="bar-row"><span class="bar-label">Tristesse</span><div class="bar" style="width:8px;background:#888;"></div><span>2</span></div>
+<div class="bar-row"><span class="bar-label">Joie</span><div class="bar" style="width:8px;background:#888;"></div><span>2</span></div>
+</div></div>
+<div class="legend"><span class="legend-item"><span class="legend-swatch" style="background:rgb(40, 80, 160);"></span>Désignée</span> <span class="legend-item"><span class="legend-swatch" style="background:rgb(0, 130, 100);"></span>Comportementale</span> <span class="legend-item"><span class="legend-swatch" style="background:rgb(180, 100, 20);"></span>Suggérée</span> <span class="legend-item"><span class="legend-swatch" style="background:rgb(120, 50, 140);"></span>Montrée</span></div>
+<div id="filter-bar"><label style="color:rgb(40, 80, 160);font-weight:600;"><input type="checkbox" class="mode-filter" value="Désignée" checked> Désignée</label><label style="color:rgb(0, 130, 100);font-weight:600;"><input type="checkbox" class="mode-filter" value="Comportementale" checked> Comportementale</label><label style="color:rgb(180, 100, 20);font-weight:600;"><input type="checkbox" class="mode-filter" value="Suggérée" checked> Suggérée</label><label style="color:rgb(120, 50, 140);font-weight:600;"><input type="checkbox" class="mode-filter" value="Montrée" checked> Montrée</label><button id="toggle-names" class="toggle-btn" title="Masquer/afficher les noms">Noms</button><button id="toggle-roles" class="toggle-btn" title="Masquer/afficher les rôles">Rôles</button><input type="text" id="search-box" placeholder="Rechercher dans les textes…"><span style="font-size:10px;color:#999;">Affichés: <span id="shown-count">53</span> / 53</span></div>
+<h2>Textes</h2>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">1</span><span class="char-name">&lt;Emilie-Harceleur&gt;</span> <span class="char-role">[bully]</span> Alors julie t&#x27;ai <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">dégeulasse</span> de sortir avec une gadji <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">bande de salopes</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Désignée,Montrée"><span class="text-idx">2</span><span class="char-name">&lt;Emilie-Harceleur&gt;</span> <span class="char-role">[bully]</span> mais tu veut quoi toi retourne avec ta gadji et assume au passant que vous ètent lesbiennes <span class="hl" style="background:rgba(40, 80, 160, 0.30);border-bottom:2px solid rgb(120, 50, 140);" title="Désignée + Montrée">sa dégouteeee</span><span class="meta">[Dégoût]</span></div>
+<div class="text-row" data-modes="Comportementale"><span class="text-idx">3</span><span class="char-name">&lt;Julie-Victime&gt;</span> <span class="char-role">[victim]</span>  on est pas ensemble déjà puis même si c&#x27;était le cas,  <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">ça ne te regarde pas</span> et <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">je vois pas en quoi ça te concerne</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Désignée,Montrée"><span class="text-idx">4</span><span class="char-name">&lt;Anna-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> mais grave <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">bande de lesbiennes</span> <span class="hl" style="background:rgba(40, 80, 160, 0.30);" title="Désignée">vous degoutée</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">aaaaah</span><span class="meta">[Dégoût]</span></div>
+<div class="text-row" data-modes="Désignée,Montrée"><span class="text-idx">5</span><span class="char-name">&lt;Emilie-Harceleur&gt;</span> <span class="char-role">[bully]</span> mais <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">olalala</span> frr assume t&#x27;aime les ch*ttes mais <span class="hl" style="background:rgba(40, 80, 160, 0.30);" title="Désignée">tu dégoute</span> meme anna elle le dit<span class="meta">[Dégoût]</span></div>
+<div class="text-row" data-modes="Désignée,Montrée"><span class="text-idx">6</span><span class="char-name">&lt;Anna-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> mais assumer <span class="hl" style="background:rgba(40, 80, 160, 0.30);" title="Désignée">vous degouter</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">bande de crasseuse</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">7</span><span class="char-name">&lt;Emilie-Harceleur&gt;</span> <span class="char-role">[bully]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">grosse crasseuse</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Désignée"><span class="text-idx">8</span><span class="char-name">&lt;Anna-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> grave abuser <span class="hl" style="background:rgba(40, 80, 160, 0.30);" title="Désignée">vous me degoutez</span><span class="meta">[Dégoût]</span></div>
+<div class="text-row" data-modes="Comportementale,Montrée"><span class="text-idx">9</span><span class="char-name">&lt;Julie-Victime&gt;</span> <span class="char-role">[victim]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">putain</span> mais <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">laissez nous tranquille</span> jvous dis qu&#x27;on est pas ensemble point<span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">10</span><span class="char-name">&lt;Anna-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> mais assume <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">grosse pute</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">11</span><span class="char-name">&lt;Emilie-Harceleur&gt;</span> <span class="char-role">[bully]</span> wshhh elodie dit leur on a vu leur <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">sal photo</span><span class="meta">[Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">12</span><span class="char-name">&lt;Julie-Victime&gt;</span> <span class="char-role">[victim]</span>  tu m&#x27;étonnes que vous l&#x27;avez vue,  c&#x27;est vous qu&#x27;il l&#x27;avez prises <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">connasses</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Comportementale,Montrée"><span class="text-idx">13</span><span class="char-name">&lt;Julie-Victime&gt;</span> <span class="char-role">[victim]</span>  on est pas gouines,  <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">je lui tenais la main pour la réconforter</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">y a quoi ?</span> <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">laissez-nous vivre</span><span class="meta">[Colère, Autre]</span></div>
+<div class="text-row" data-modes="Désignée,Montrée"><span class="text-idx">14</span><span class="char-name">&lt;Elodie-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">burk</span> <span class="hl" style="background:rgba(40, 80, 160, 0.30);" title="Désignée">sa me degoute</span><span class="meta">[Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">15</span><span class="char-name">&lt;Julie-Victime&gt;</span> <span class="char-role">[victim]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">mellez-vous de votre cul</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">16</span><span class="char-name">&lt;Anna-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> assume que t&#x27;aime les filles c tout <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">connasse</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">17</span><span class="char-name">&lt;Elodie-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">cul de crasseuse</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">18</span><span class="char-name">&lt;Julie-Victime&gt;</span> <span class="char-role">[victim]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">tg</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">saloppe</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">19</span><span class="char-name">&lt;Elodie-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> marie <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">tg</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">20</span><span class="char-name">&lt;Elodie-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">saloperie</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">21</span><span class="char-name">&lt;Emilie-Harceleur&gt;</span> <span class="char-role">[bully]</span> bref venais on les vire de la classe c&#x27;est <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">grosse crasseuse</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Comportementale"><span class="text-idx">22</span><span class="char-name">&lt;Elodie-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">on veut pas de sa ici</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">23</span><span class="char-name">&lt;Anna-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> grave pas de <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">crasseuse</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Désignée"><span class="text-idx">24</span><span class="char-name">&lt;Anna-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> <span class="hl" style="background:rgba(40, 80, 160, 0.30);" title="Désignée">me degoute</span><span class="meta">[Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">25</span><span class="char-name">&lt;Elodie-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">burk</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">bande de chienne</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Suggérée"><span class="text-idx">26</span><span class="char-name">&lt;Julie-Victime&gt;</span> <span class="char-role">[victim]</span> <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">ça se voit vous êtes pas des potes si ça vous est jamais de réconforter votre pote</span><span class="meta">[Colère, Tristesse]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">27</span><span class="char-name">&lt;Anna-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> mais <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">ftg</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Comportementale"><span class="text-idx">28</span><span class="char-name">&lt;Julie-Victime&gt;</span> <span class="char-role">[victim]</span> bah alors <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">tais-toi et laisse-nous vivre</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">29</span><span class="char-name">&lt;Julie-Victime&gt;</span> <span class="char-role">[victim]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">c&#x27;est quoi le rapport entre être gouine et être une pute ?</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">30</span><span class="char-name">&lt;Elodie-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">pute</span> et <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">gouine</span> cla meme<span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">31</span><span class="char-name">&lt;Anna-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">ftg</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Désignée,Montrée"><span class="text-idx">32</span><span class="char-name">&lt;Anna-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">grave</span> <span class="hl" style="background:rgba(40, 80, 160, 0.30);" title="Désignée">vous me degouter</span><span class="meta">[Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">33</span><span class="char-name">&lt;Anna-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> c toi ta un problème <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">grosse pute</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">34</span><span class="char-name">&lt;Elodie-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">ftg</span> c toi la <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">gouine</span> tu parle avec nous <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">sombre pute</span> wallah t ki<span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Comportementale"><span class="text-idx">35</span><span class="char-name">&lt;Emilie-Harceleur&gt;</span> <span class="char-role">[bully]</span> <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">on va dire a un gadjo de la violer sa va lui remettre les idée en place</span><span class="meta">[Colère, Autre]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">36</span><span class="char-name">&lt;Julie-Victime&gt;</span> <span class="char-role">[victim]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">t&#x27;as des problèmes</span> pour dire des choses pareil<span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">37</span><span class="char-name">&lt;Julie-Victime&gt;</span> <span class="char-role">[victim]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">tu te rends compte de ce que tu dis là ??</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">38</span><span class="char-name">&lt;Anna-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">ftg</span> tu vas kiffer<span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Suggérée,Montrée"><span class="text-idx">39</span><span class="char-name">&lt;Emilie-Harceleur&gt;</span> <span class="char-role">[bully]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">ptdrrr</span> grvvv et arthur <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">ta channgé jte croyais pas comme sa quoi toiausssi</span> tai <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">pd</span><span class="meta">[Colère, Dégoût, Joie]</span></div>
+<div class="text-row" data-modes="Suggérée,Montrée"><span class="text-idx">40</span><span class="char-name">&lt;Arthur-Conciliateur&gt;</span> <span class="char-role">[conciliator]</span>  mais <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">arrêter c&#x27;est exessif la</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">vous aimeriez etre a sa place et qu&#x27;on vous dises la meme chose ?!</span> Non,  parce que <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">personne ne mérite ca</span> <span class="meta">[Colère, Tristesse]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">41</span><span class="char-name">&lt;Julie-Victime&gt;</span> <span class="char-role">[victim]</span>  <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">allo le viol c&#x27;est pas une blague</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">grosse bouffonne</span>,  <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">va falloir avoir des valeurs un peu là un minimum</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Comportementale,Suggérée"><span class="text-idx">42</span><span class="char-name">&lt;Marie-Soutien-Victime&gt;</span> <span class="char-role">[victim_support]</span> <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">laissé la tranquille</span> <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">elle a le droit d&#x27;aimer qui elle veut</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">43</span><span class="char-name">&lt;Elodie-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">c une blague</span> les gens qui retournent leur veste la tous des hypocrites la<span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">44</span><span class="char-name">&lt;Anna-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">mais grave</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">que des traitres</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Suggérée"><span class="text-idx">45</span><span class="char-name">&lt;Julie-Victime&gt;</span> <span class="char-role">[victim]</span>  <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">si vous ne disiez pas n&#x27;importe quoi aussi,  les gens seraient peut-êtr eun peu avec vous</span><span class="meta">[Colère, Autre]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">46</span><span class="char-name">&lt;Anna-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">ptddddrrrrrrr</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">mais la blague</span><span class="meta">[Colère, Joie]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">47</span><span class="char-name">&lt;Elodie-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">rien a foutre</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">PAS DE GOUINE ICI</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Comportementale,Montrée"><span class="text-idx">48</span><span class="char-name">&lt;Emilie-Harceleur&gt;</span> <span class="char-role">[bully]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">bande de crasseux</span> meme arthur <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">on va te degager de la classe</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Suggérée,Montrée"><span class="text-idx">49</span><span class="char-name">&lt;Julie-Victime&gt;</span> <span class="char-role">[victim]</span>  mais <span class="hl" style="background:rgba(180, 100, 20, 0.30);" title="Suggérée">vous allez trop loin</span>,  vous dites n&#x27;importes quoi alors <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">vous méritez les deux connasses</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">50</span><span class="char-name">&lt;Anna-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> on va pas de sa iciiiii <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">merde</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">51</span><span class="char-name">&lt;Emilie-Harceleur&gt;</span> <span class="char-role">[bully]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">STOP LESBIENNES !!!!</span><span class="meta">[Colère, Dégoût]</span></div>
+<div class="text-row" data-modes="Montrée"><span class="text-idx">52</span><span class="char-name">&lt;Anna-Soutien-Harceleur&gt;</span> <span class="char-role">[bully_support]</span> <span class="hl" style="background:rgba(120, 50, 140, 0.30);" title="Montrée">DEHORSSSSS</span><span class="meta">[Colère]</span></div>
+<div class="text-row" data-modes="Comportementale,Suggérée"><span class="text-idx">53</span><span class="char-name">&lt;Julie-Victime&gt;</span> <span class="char-role">[victim]</span> <span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale">c&#x27;est les </span><span class="hl" style="background:rgba(0, 130, 100, 0.30);border-bottom:2px solid rgb(180, 100, 20);" title="Comportementale + Suggérée">homophobes</span><span class="hl" style="background:rgba(0, 130, 100, 0.30);" title="Comportementale"> qu&#x27;on dégage pas nous</span><span class="meta">[Colère, Dégoût]</span></div>
+<script>
+function applyFilters() {
+  var checks = document.querySelectorAll('.mode-filter');
+  var activeModes = [];
+  checks.forEach(function(cb) { if(cb.checked) activeModes.push(cb.value); });
+  var search = (document.getElementById('search-box') || {}).value || '';
+  search = search.toLowerCase();
+  var rows = document.querySelectorAll('.text-row');
+  var shown = 0;
+  rows.forEach(function(row) {
+    var modes = (row.dataset.modes || '').split(',');
+    var modeOk = activeModes.length === 0 || activeModes.some(function(m){ return modes.indexOf(m) >= 0; });
+    var textOk = !search || row.textContent.toLowerCase().indexOf(search) >= 0;
+    if (modeOk && textOk) { row.style.display=''; shown++; }
+    else { row.style.display='none'; }
+  });
+  document.getElementById('shown-count').textContent = shown;
+}
+document.querySelectorAll('.mode-filter').forEach(function(cb){ cb.addEventListener('change', applyFilters); });
+var sb = document.getElementById('search-box');
+if(sb) sb.addEventListener('input', applyFilters);
+var btnName = document.getElementById('toggle-names');
+var btnRole = document.getElementById('toggle-roles');
+if(btnName) btnName.addEventListener('click', function() {
+  document.body.classList.toggle('hide-names');
+  this.classList.toggle('active');
+});
+if(btnRole) btnRole.addEventListener('click', function() {
+  document.body.classList.toggle('hide-roles');
+  this.classList.toggle('active');
+});
+</script>
+</body>
+</html>
