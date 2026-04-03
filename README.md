@@ -1,4 +1,4 @@
-# Annotation pour des messages de Cyberharcèlement
+# Annotations pour des messages de Cyberharcèlement
 
 Annotation des émotions dans [ce corpus](https://github.com/aollagnier/CyberAgression-Large) de messages de cyberharcèlement (11-18 ans, français) via différents LLMs.
 
@@ -169,4 +169,3 @@ python scripts/emotyc_predict.py \
 ## Émotions annotées (11)
 
 Colère · Dégoût · Joie · Peur · Surprise · Tristesse · Admiration · Culpabilité · Embarras · Fierté · Jalousie
-# CyberBullyingAnnotations
